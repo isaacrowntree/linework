@@ -1,50 +1,91 @@
 # linework
 
-A tiny **true-3D renderer for annotated technical drawings**, output as plain SVG strings. Rotate → project → depth-sort → paint. Zero dependencies, ~180 lines, fully tested.
+[![ci](https://github.com/isaacrowntree/linework/actions/workflows/ci.yml/badge.svg)](https://github.com/isaacrowntree/linework/actions) · **[Live demo — drag it →](https://isaacrowntree.github.io/linework/)**
 
-Built because this category is empty: 3D libraries (three.js) make *shaded surfaces* easy and annotated linework painful — thin strokes, dash patterns, line-weight hierarchy, crawlable text callouts are all fights against WebGL. Pseudo-3D toys (Zdog, unmaintained since 2019) can't do text or real depth sorting granularity. Nothing ships "parametric technical illustration." This does exactly that, and nothing else.
+A tiny **true-3D renderer for annotated technical drawings**, output as plain SVG strings. Rotate → project → depth-sort → paint. Zero dependencies, ~180-line core, fully tested.
 
-## What you get
+![Exploded pillow-block bearing assembly rendered by linework](docs/hero.svg)
 
-- **The classic pipeline, honestly implemented**: model in 3D points → yaw/pitch rotation → perspective projection → painter's-algorithm depth sorting per frame → SVG string out.
-- **Shapes built for drawings, not games**: multi-stroke paths (hollow-tube outlines in one shape), discs that project to correct ellipses, stylized cylinder end-caps, backface-culled quads for boxes.
-- **Per-object sorting for animated parts**: shapes sharing a `part` key sort as one unit and emit inside one `<g>` wrapper — CSS transforms/transitions on parts keep working.
-- **Depth cueing**: far strokes dim gently instead of hidden-line removal — reads as "behind," stays printable.
-- **SVG strings, not a canvas**: your output is themeable with CSS variables, accessible, crawlable, printable. Styling lives in your stylesheet, not the library.
+*This image was rendered by the library itself, in Node, with zero client JavaScript — `npm run hero` regenerates it. The [live version](https://isaacrowntree.github.io/linework/) orbits under your pointer.*
 
-## Usage
+## Why
+
+The category is empty. WebGL libraries (three.js) make *shaded surfaces* easy and annotated linework painful — thin strokes, dash patterns, line-weight hierarchy, text callouts are all fights. Pseudo-3D toys (Zdog — last release 2019) can't do text or fine-grained depth sorting. Nothing ships "parametric technical illustration": exploded diagrams, dimension lines, balloons, title blocks. This does exactly that, and nothing else.
+
+- **The classic pipeline, honestly implemented** — 3D points → yaw/pitch rotation → perspective projection → painter's-algorithm depth sorting *per frame* → SVG string. Paint order is computed, never authored.
+- **Shapes built for drawings, not games** — multi-stroke paths (hollow-tube outlines as one shape), discs that project to correct ellipses, backface-culled boxes, per-object sorting for animated parts.
+- **SVG strings are the point** — themeable with CSS variables, crawlable, printable, accessible, and **renderable server-side at build time**.
+- **Styling is yours** — the library emits class names you define; it never dictates a look.
+
+## The sketch layer — DX is a feature
+
+Authoring should read like drafting, not like assembling tuples. Context blocks scope parts, tags and layering over everything drawn inside them:
 
 ```ts
-import { render, type Shape, type View } from "./src/linework";
+import { sketch, scene } from "linework/sketch";
 
-const view: View = { yaw: 0.42, pitch: 0.1, f: 1600, cx: 460, cy: 340 };
+const s = sketch({ yaw: 0.5, pitch: 0.16, f: 1500, cx: 460, cy: 320 });
 
-const shapes: Shape[] = [
-  // a wheel: disc in the model's xy-plane → correct ellipse under rotation
-  { t: "disc", c: [180, 400, 0], r: 148, strokes: [{ cls: "tire" }, { cls: "tire-in" }] },
-  // a frame tube: fat outline + panel-colored core = hollow tube, one shape
-  { t: "path", d: [["M", [180, 400, 40]], ["Q", [300, 420, 20], [420, 340, 10]]],
-    strokes: [{ cls: "tube", w: 9 }, { cls: "tube-in", w: 4 }] },
-  // an animated part: sorts as one object, emits inside its own <g>
-  { t: "face", c: [420, 430, 28], r: 24, strokes: [{ cls: "accent" }], part: "motor" },
-];
+s.box(300, 380, 320, 42, 40, 80);                    // base plate
 
-const svg = render(shapes, view, { motor: { attrs: 'id="motor" class="part"' } });
-element.innerHTML = svg; // rebuild per frame for a drag turntable — it's ~1ms
+s.part("housing", 'class="prt"', () => {             // one <g>, one sort unit
+  s.cyl([460, 218], 70, 34, -34, "ink");             // bearing body
+  s.bias(0.6, () => s.cap([460, 218], 34, 32, "ink")); // bore, layered above
+});
+
+s.tube(9).M([180, 400]).Q([300, 420], 20, [420, 340], 10); // hollow frame tube
+
+s.note("320 mm", [460, 452]);                        // paper-space annotation
+el.innerHTML = s.render();                           // depth-sorted SVG
 ```
 
-Known limitation (shared with every painter's-algorithm renderer): cyclic overlaps can't sort correctly — split long members into segments if you hit one. Faces (`t: "face"`) deliberately stay round instead of thinning to lenses edge-on; parts must stay readable in a diagram.
+For animation, `scene()` gives you the frame-loop idiom — define once, replay with a new view per frame:
 
-## Tests
+```ts
+const draw = scene((s, { explode }) => { /* build with s.* */ });
+el.innerHTML = draw({ yaw, pitch, f: 1500, cx: 460, cy: 320 }, { explode });
+// ~1 ms for a few hundred shapes — drag-to-orbit rebuilds are free
+```
+
+Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform()`, and `linework/helpers` sits in between.
+
+## Coordinates (read this once)
+
+| Field | Meaning |
+|---|---|
+| `x` | right, in your SVG's user units |
+| `y` | **down** — screen convention, not math convention |
+| `z` | toward the viewer; negative recedes and depth-dims |
+| `view.yaw` | rotation about the vertical axis through `cx` (radians) |
+| `view.pitch` | rotation about the horizontal axis through `cy`; positive looks down |
+| `view.f` | perspective focal distance — `k = f/(f−z)`; larger = flatter |
+| `bias` | per-shape depth nudge for deliberate coplanar layering |
+
+**Paper space:** annotations (dimensions, balloons, title blocks) are strings appended *after* the sorted scene — they never rotate, exactly like a real drawing's notes. `sketch.pt(p, z)` projects model points so leaders can pin paper to model.
+
+**Known limitation** (shared by every painter's-algorithm renderer): cyclic overlaps can't sort correctly — split long members into segments if you construct one.
+
+## Server-side rendering
+
+`render()` is a pure string function. Static site generators can emit finished 3D-looking diagrams with **zero client JS**:
+
+```js
+import { writeFileSync } from "node:fs";
+writeFileSync("diagram.svg", wrapInSvgTag(render(shapes, view)));
+```
+
+The hero image above and this repo's [demo page](https://isaacrowntree.github.io/linework/) are both drawn this way — see [`scripts/render-hero.mjs`](scripts/render-hero.mjs) and [`docs/scene.js`](docs/scene.js).
+
+## Install & test
 
 ```bash
-npm install && npm test
+npm i linework        # ESM, types included
+npm test              # 13 invariant tests: projection identity, parallax
+                      # direction, paint order, culling, sketch scoping…
 ```
-
-Nine invariants: projection identity, 3D symmetry vs on-screen perspective asymmetry, parallax direction, pitch orientation, far-to-near paint order, stable coplanar ordering, part grouping, backface culling, disc foreshortening.
 
 ## Provenance
 
-Extracted from [Fitment](https://fitment.cc) — a "will that part fit your bike?" planner whose exploded service-manual drawings are rendered entirely by this engine, live-orbitable, with dimension callouts in flat paper space over the rotating model.
+Extracted from **Fitment** — a "will that part fit your bike?" planner whose exploded service-manual drawings are rendered entirely by this engine, live-orbitable, with dimension callouts in paper space over the rotating model.
 
 MIT.

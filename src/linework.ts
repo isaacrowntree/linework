@@ -85,7 +85,6 @@ function pathD(d: Cmd[], X: (p: V3) => Pt): { str: string; zs: number[] } {
 const dim = (z: number) => (z < -12 ? Math.max(0.55, 1 + (z + 12) / 420).toFixed(2) : "");
 
 function emit(sh: Shape, X: (p: V3) => Pt): { svg: string; depth: number } {
-  const tag = sh.tag ? ` class="__T__ ${sh.tag}"` : "";
   if (sh.t === "path") {
     const { str, zs } = pathD(sh.d, X);
     const depth = zs.reduce((a, b) => a + b, 0) / (zs.length || 1);
