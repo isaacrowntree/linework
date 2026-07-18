@@ -1,12 +1,17 @@
 # linework
 
-[![ci](https://github.com/isaacrowntree/linework/actions/workflows/ci.yml/badge.svg)](https://github.com/isaacrowntree/linework/actions) · **[Live demo — drag it →](https://isaacrowntree.github.io/linework/)**
+[![ci](https://github.com/isaacrowntree/linework/actions/workflows/ci.yml/badge.svg)](https://github.com/isaacrowntree/linework/actions)
+[![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
+[![live demo](https://img.shields.io/badge/demo-live-FFC24B.svg)](https://isaacrowntree.com/linework/)
 
 A tiny **true-3D renderer for annotated technical drawings**, output as plain SVG strings. Rotate → project → depth-sort → paint. Zero dependencies, ~180-line core, fully tested.
 
-![Exploded pillow-block bearing assembly rendered by linework](docs/hero.svg)
+### ▶ [Try the live demo — drag the exploded assembly](https://isaacrowntree.com/linework/)
 
-*This image was rendered by the library itself, in Node, with zero client JavaScript — `npm run hero` regenerates it. The [live version](https://isaacrowntree.github.io/linework/) orbits under your pointer.*
+[![Exploded pillow-block bearing assembly rendered by linework](docs/hero.svg)](https://isaacrowntree.com/linework/)
+
+*The image above was rendered by the library itself, in Node, with zero client JavaScript — `npm run hero` regenerates it. On the [live demo](https://isaacrowntree.com/linework/) the same drawing orbits under your pointer.*
 
 ## Why
 
@@ -74,7 +79,7 @@ import { writeFileSync } from "node:fs";
 writeFileSync("diagram.svg", wrapInSvgTag(render(shapes, view)));
 ```
 
-The hero image above and this repo's [demo page](https://isaacrowntree.github.io/linework/) are both drawn this way — see [`scripts/render-hero.mjs`](scripts/render-hero.mjs) and [`docs/scene.js`](docs/scene.js).
+The hero image above and this repo's [demo page](https://isaacrowntree.com/linework/) are both drawn this way — see [`scripts/render-hero.mjs`](scripts/render-hero.mjs) and [`docs/scene.js`](docs/scene.js).
 
 ## Install & test
 
@@ -84,8 +89,14 @@ npm test              # 13 invariant tests: projection identity, parallax
                       # direction, paint order, culling, sketch scoping…
 ```
 
+## Contributing
+
+Small, dependency-free, and test-driven on purpose — see [CONTRIBUTING.md](CONTRIBUTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md). Issues and PRs welcome.
+
 ## Provenance
 
 Extracted from **Fitment** — a "will that part fit your bike?" planner whose exploded service-manual drawings are rendered entirely by this engine, live-orbitable, with dimension callouts in paper space over the rotating model.
 
-MIT.
+## License
+
+[MIT](LICENSE) © Isaac Rowntree

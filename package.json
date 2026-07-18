@@ -14,7 +14,7 @@
   "files": ["dist", "src", "README.md", "LICENSE"],
   "license": "MIT",
   "repository": "github:isaacrowntree/linework",
-  "homepage": "https://isaacrowntree.github.io/linework/",
+  "homepage": "https://isaacrowntree.com/linework/",
   "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js docs/",
