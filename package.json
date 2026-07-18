@@ -1,0 +1,26 @@
+{
+  "name": "linework",
+  "version": "0.1.0",
+  "description": "Tiny true-3D renderer for annotated technical drawings in SVG — rotate, project, depth-sort, emit strings. Zero dependencies.",
+  "type": "module",
+  "main": "src/linework.ts",
+  "types": "src/linework.ts",
+  "license": "MIT",
+  "repository": "github:isaacrowntree/linework",
+  "keywords": [
+    "svg",
+    "3d",
+    "pseudo-3d",
+    "isometric",
+    "technical-illustration",
+    "exploded-diagram",
+    "painters-algorithm"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}
