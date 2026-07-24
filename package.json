@@ -12,7 +12,7 @@
     "./orbit": { "types": "./dist/orbit.d.ts", "import": "./dist/orbit.js" },
     "./import": { "types": "./dist/import.d.ts", "import": "./dist/import.js" }
   },
-  "files": ["dist", "src", "README.md", "LICENSE"],
+  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
   "license": "MIT",
   "repository": "github:isaacrowntree/linework",
   "homepage": "https://isaacrowntree.com/linework/",
@@ -21,7 +21,8 @@
     "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js dist/import.js docs/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "hero": "npm run build && node scripts/render-hero.mjs"
+    "hero": "npm run build && node scripts/render-hero.mjs",
+    "prepublishOnly": "npm run build && npm test"
   },
   "devDependencies": {
     "typescript": "^5.9.3",
