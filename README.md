@@ -7,11 +7,11 @@
 
 A tiny **true-3D renderer for annotated technical drawings**, output as plain SVG strings. Rotate → project → depth-sort → paint. Zero dependencies, ~180-line core, fully tested.
 
-### ▶ [Try the live demo — drag the exploded assembly](https://isaacrowntree.com/linework/)
+### ▶ [Try the live demo — drop a 3D model, watch it become a drawing](https://isaacrowntree.com/linework/)
 
-[![Exploded pillow-block bearing assembly rendered by linework](docs/hero.svg)](https://isaacrowntree.com/linework/)
+[![A street lantern imported from a glTF mesh and rendered by linework as feature-edge linework](docs/import-lantern.svg)](https://isaacrowntree.com/linework/)
 
-*The image above was rendered by the library itself, in Node, with zero client JavaScript — `npm run hero` regenerates it. On the [live demo](https://isaacrowntree.com/linework/) the same drawing orbits under your pointer.*
+*The lantern above was **imported from a glTF mesh** and rendered by the library itself, in Node, with zero client JavaScript. On the [live demo](https://isaacrowntree.com/linework/) it orbits under your pointer — and you can drop your own model.*
 
 ## Why
 
@@ -58,9 +58,7 @@ Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform(
 
 `linework/import` turns a **glTF/GLB or OBJ mesh into linework strokes**. A shaded model carries no lines — its form lives in where the surface bends — so it recovers exactly the lines a draftsperson would draw: the outline and the hard creases, nothing from the smooth interior of a face. The result drops straight into `render()` and rotates like any other scene.
 
-[![A street lantern imported from a glTF mesh and rendered as feature-edge linework](docs/import-lantern.svg)](https://isaacrowntree.com/linework/)
-
-*A CC0 street lantern — 5,394 triangles of shaded mesh → 2,479 feature edges → rotatable line drawing, in one call. [Try it live: drop your own .glb](https://isaacrowntree.com/linework/).*
+*(That lantern in the header is exactly this: a CC0 glTF — 5,394 triangles of shaded mesh → 2,479 feature edges → rotatable line drawing, in one `meshToShapes()` call. [Drop your own .glb on the demo](https://isaacrowntree.com/linework/).)*
 
 ```ts
 import { parseGLB, meshToShapes } from "linework/import";
