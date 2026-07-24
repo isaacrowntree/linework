@@ -1,5 +1,6 @@
 # linework
 
+[![npm](https://img.shields.io/npm/v/linework?color=cb3837&logo=npm)](https://www.npmjs.com/package/linework)
 [![ci](https://github.com/isaacrowntree/linework/actions/workflows/ci.yml/badge.svg)](https://github.com/isaacrowntree/linework/actions)
 [![license: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![zero dependencies](https://img.shields.io/badge/dependencies-0-brightgreen.svg)](package.json)
@@ -117,7 +118,7 @@ The hero image above and this repo's [demo page](https://isaacrowntree.com/linew
 
 ```bash
 npm i linework        # ESM, types included
-npm test              # 19 tests: projection, parallax, paint order, culling,
+npm test              # projection, parallax, paint order, culling,
                       # sketch scoping, and feature-edge extraction
 ```
 
