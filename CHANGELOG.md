@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.3.0] — 2026-07-24
+
+### Added
+- **More import formats** (`linework/import`): `parseSTL` (binary or ASCII — the
+  3D-printing format), `fromBufferGeometry` (adapt a three.js `BufferGeometry`
+  with no three.js dependency), and `fromOcct` (map [occt-import-js] STEP/IGES
+  results in — the CAD kernel stays an optional ~6 MB peer, not a dependency).
+- Live demo importer now accepts `.stl` alongside `.glb` / `.obj`.
+- 6 more tests (binary + ASCII STL round-trips, size-based binary detection,
+  three.js adapter indexed/non-indexed, occt result mapping). 25 total.
+
+[occt-import-js]: https://github.com/kovacsv/occt-import-js
+
 ## [0.2.0] — 2026-07-24
 
 ### Added

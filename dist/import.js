@@ -125,6 +125,76 @@ export function parseOBJ(text) {
     }
     return [{ positions: Float32Array.from(verts), indices: Uint32Array.from(idx) }];
 }
+/* ============================ STL ============================ */
+/** Build an unindexed mesh from flat triangle-soup positions (STL has no
+ *  shared indices; featureEdges welds by position to recover topology). */
+function meshFromSoup(positions) {
+    const indices = new Uint32Array(positions.length / 3);
+    for (let i = 0; i < indices.length; i++)
+        indices[i] = i;
+    return { positions, indices };
+}
+function parseAsciiSTL(text) {
+    const verts = [];
+    const re = /vertex\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)\s+(-?[\d.eE+-]+)/g;
+    let m;
+    while ((m = re.exec(text)))
+        verts.push(+m[1], +m[2], +m[3]);
+    return [meshFromSoup(Float32Array.from(verts))];
+}
+/**
+ * Parse a binary or ASCII `.stl` into a single mesh. Binary is detected by
+ * the exact-size invariant (84 + 50·count bytes) rather than the unreliable
+ * "solid" prefix, since some binary exporters write "solid" in the header.
+ */
+export function parseSTL(data) {
+    if (typeof data === "string")
+        return parseAsciiSTL(data);
+    const dv = new DataView(data);
+    const count = dv.byteLength >= 84 ? dv.getUint32(80, true) : 0;
+    const isBinary = dv.byteLength === 84 + count * 50;
+    if (!isBinary) {
+        const text = new TextDecoder().decode(new Uint8Array(data));
+        if (/^\s*solid/.test(text) && text.includes("vertex"))
+            return parseAsciiSTL(text);
+        throw new Error("[import] not a recognisable STL (bad size and no ASCII facets)");
+    }
+    const positions = new Float32Array(count * 9);
+    for (let i = 0; i < count; i++) {
+        const o = 84 + i * 50 + 12; // skip the 12-byte per-face normal
+        for (let v = 0; v < 9; v++)
+            positions[i * 9 + v] = dv.getFloat32(o + v * 4, true);
+    }
+    return [meshFromSoup(positions)];
+}
+/* ==================== three.js adapter ==================== */
+/**
+ * Adapt a three.js `BufferGeometry` (or anything with the same shape) into a
+ * linework `Mesh` — no three.js dependency, it just reads the typed arrays.
+ * Bring an existing three scene's geometry straight into a technical drawing.
+ */
+export function fromBufferGeometry(geometry) {
+    const src = geometry.attributes.position.array;
+    const positions = src instanceof Float32Array ? src : Float32Array.from(src);
+    const indices = geometry.index
+        ? Uint32Array.from(geometry.index.array)
+        : meshFromSoup(positions).indices;
+    return { positions, indices };
+}
+/**
+ * Adapt the result of [occt-import-js](https://github.com/kovacsv/occt-import-js)
+ * — OpenCASCADE compiled to WASM — which is the practical way to get geometry
+ * out of a **STEP / IGES / BREP** CAD file. You bring the kernel (it's ~6 MB,
+ * so it stays an optional peer, not a linework dependency); each mesh it
+ * returns already matches a BufferGeometry, so this just maps and merges them.
+ *
+ *   const occt = await occtimportjs();
+ *   const result = occt.ReadStepFile(new Uint8Array(buf), null);
+ *   const shapes = meshToShapes(fromOcct(result), { fit });
+ */
+export function fromOcct(result) {
+    return result.meshes.map(fromBufferGeometry);
+}
 function faceNormal(p, a, b, c) {
     const ux = p[b * 3] - p[a * 3], uy = p[b * 3 + 1] - p[a * 3 + 1], uz = p[b * 3 + 2] - p[a * 3 + 2];
     const vx = p[c * 3] - p[a * 3], vy = p[c * 3 + 1] - p[a * 3 + 1], vz = p[c * 3 + 2] - p[a * 3 + 2];

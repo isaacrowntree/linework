@@ -1,6 +1,6 @@
 {
   "name": "linework",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tiny true-3D renderer for annotated technical drawings in SVG — rotate, project, depth-sort, emit strings. Zero dependencies.",
   "type": "module",
   "main": "./dist/linework.js",

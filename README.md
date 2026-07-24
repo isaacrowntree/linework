@@ -56,7 +56,7 @@ Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform(
 
 ## Import a 3D model → a technical drawing
 
-`linework/import` turns a **glTF/GLB or OBJ mesh into linework strokes**. A shaded model carries no lines — its form lives in where the surface bends — so it recovers exactly the lines a draftsperson would draw: the outline and the hard creases, nothing from the smooth interior of a face. The result drops straight into `render()` and rotates like any other scene.
+`linework/import` turns a **3D mesh — glTF/GLB, OBJ, STL, or a three.js `BufferGeometry` — into linework strokes**. A shaded model carries no lines — its form lives in where the surface bends — so it recovers exactly the lines a draftsperson would draw: the outline and the hard creases, nothing from the smooth interior of a face. The result drops straight into `render()` and rotates like any other scene.
 
 *(That lantern in the header is exactly this: a CC0 glTF — 5,394 triangles of shaded mesh → 2,479 feature edges → rotatable line drawing, in one `meshToShapes()` call. [Drop your own .glb on the demo](https://isaacrowntree.com/linework/).)*
 
@@ -64,7 +64,7 @@ Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform(
 import { parseGLB, meshToShapes } from "linework/import";
 import { render } from "linework";
 
-const meshes = parseGLB(await file.arrayBuffer());          // or parseOBJ(text)
+const meshes = parseGLB(await file.arrayBuffer());          // parseOBJ · parseSTL · fromBufferGeometry
 const shapes = meshToShapes(meshes, {
   angle: 25,                                                // crease threshold°
   fit: { cx: 400, cy: 300, size: 440 },                     // fit into a screen box
@@ -72,7 +72,19 @@ const shapes = meshToShapes(meshes, {
 el.innerHTML = render(shapes, { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300 });
 ```
 
-`featureEdges(mesh)` is exposed on its own if you want the raw edge list. Vertices are welded by position first, so meshes that split a shared edge across primitives still sort as one surface. **No Draco**, and geometry-only — textures and materials are ignored. STEP/true-CAD import is on the roadmap.
+`featureEdges(mesh)` is exposed on its own if you want the raw edge list. Vertices are welded by position first, so meshes that split a shared edge across primitives still sort as one surface. **No Draco**, and geometry-only — textures and materials are ignored.
+
+**Formats:**
+
+| Input | Function | Notes |
+|---|---|---|
+| glTF / GLB | `parseGLB(buffer)` | embedded buffers, node transforms; no Draco |
+| OBJ | `parseOBJ(text)` | fan-triangulated |
+| STL | `parseSTL(buffer \| text)` | binary or ASCII; the 3D-printing format |
+| three.js | `fromBufferGeometry(geo)` | reads the typed arrays; no three.js dependency |
+| **STEP / IGES** | `fromOcct(result)` | via [occt-import-js](https://github.com/kovacsv/occt-import-js) (OpenCASCADE WASM) — you bring the kernel; linework stays tiny |
+
+STEP is a trimmed-NURBS B-rep, not a mesh — tessellating it is a job for a real CAD kernel, so linework doesn't embed one. `occt-import-js` returns meshes that `fromOcct()` maps straight in, keeping the ~6 MB kernel an optional peer rather than a dependency.
 
 ## Coordinates (read this once)
 

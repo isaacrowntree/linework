@@ -181,8 +181,8 @@
         </div>
       </div>
       <label id="drop" for="ifile" data-no-orbit style="display:block;margin-top:12px">
-        <div class="drop-big">Drop your own <b>.glb</b> or <b>.obj</b><br><span>or click to choose — runs in your browser, nothing uploaded</span></div>
-        <input id="ifile" type="file" accept=".glb,.gltf,.obj" hidden>
+        <div class="drop-big">Drop your own <b>.glb</b>, <b>.obj</b> or <b>.stl</b><br><span>or click to choose — runs in your browser, nothing uploaded</span></div>
+        <input id="ifile" type="file" accept=".glb,.gltf,.obj,.stl" hidden>
       </label>
       <p class="hint" id="istat" style="min-height:1.2em"></p>
       <p class="hint"><b>Drag</b> to orbit · <b>double-click</b> resets · the slider raises the crease threshold. The amber readout is real: feature edges extracted and depth-sorted this frame.</p>
@@ -283,7 +283,7 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
   import { xform, render } from "./linework.js";
   import { line3 } from "./helpers.js";
   import { orbit } from "./orbit.js";
-  import { parseGLB, parseOBJ, meshToShapes } from "./import.js";
+  import { parseGLB, parseOBJ, parseSTL, meshToShapes } from "./import.js";
 
   /* ---------- hero: a glTF mesh imported live, orbiting ---------- */
   const stage = document.getElementById("stage");
@@ -308,15 +308,17 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
 
   function ingest(buf, name) {
     try {
-      const m = name.toLowerCase().endsWith(".obj")
-        ? parseOBJ(new TextDecoder().decode(buf)) : parseGLB(buf);
+      const lc = name.toLowerCase();
+      const m = lc.endsWith(".obj") ? parseOBJ(new TextDecoder().decode(buf))
+        : lc.endsWith(".stl") ? parseSTL(buf)
+        : parseGLB(buf);
       const tris = m.reduce((a, x) => a + x.indices.length / 3, 0);
       if (!tris) throw new Error("no geometry found");
       meshes = m;
       istat.innerHTML = `<b>${name}</b> — ${m.length} mesh · ${tris.toLocaleString()} triangles → feature edges, live.`;
       ctl.redraw();
     } catch (err) {
-      istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${err.message}. Try an uncompressed .glb (no Draco) or .obj.</span>`;
+      istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${err.message}. Try an uncompressed .glb (no Draco), .obj, or .stl.</span>`;
     }
   }
   const readFile = (f) => f.arrayBuffer().then((b) => ingest(b, f.name));
