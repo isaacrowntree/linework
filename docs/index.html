@@ -172,59 +172,23 @@
 
     <div>
       <div class="board">
-        <svg id="stage" viewBox="0 0 920 560" role="img" aria-label="Exploded pillow-block bearing assembly, drag to orbit">
-          <defs>
-            <marker id="lwarr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-              <path d="M0 0L8 4L0 8z" fill="var(--mut)"/>
-            </marker>
-          </defs>
+        <svg id="stage" viewBox="0 0 800 600" role="img" aria-label="A CC0 street lantern, imported from a glTF mesh and rendered as feature-edge linework — drag to orbit">
           <g id="scene"></g>
         </svg>
         <div class="boardbar">
-          <label>Explode <input id="explode" type="range" min="0" max="100" value="85" aria-label="Explode amount"></label>
-          <span id="perf" aria-live="off">—</span>
+          <label data-no-orbit>Creases <input id="hcrease" type="range" min="10" max="45" value="25" aria-label="Crease angle threshold"></label>
+          <span id="perf">—</span>
         </div>
       </div>
-      <p class="hint"><b>Drag</b> to orbit (yaw + pitch) · <b>double-click</b> resets · slider explodes the assembly. The amber readout is real: shapes sorted and emitted this frame.</p>
+      <label id="drop" for="ifile" data-no-orbit style="display:block;margin-top:12px">
+        <div class="drop-big">Drop your own <b>.glb</b> or <b>.obj</b><br><span>or click to choose — runs in your browser, nothing uploaded</span></div>
+        <input id="ifile" type="file" accept=".glb,.gltf,.obj" hidden>
+      </label>
+      <p class="hint" id="istat" style="min-height:1.2em"></p>
+      <p class="hint"><b>Drag</b> to orbit · <b>double-click</b> resets · the slider raises the crease threshold. The amber readout is real: feature edges extracted and depth-sorted this frame.</p>
     </div>
   </div>
 </header>
-
-<section id="import">
-  <div class="wrap">
-    <div class="eyebrow">Bring your own model</div>
-    <h2>Drop a 3D model, get a technical drawing</h2>
-    <p class="honest" style="margin-bottom:18px">A shaded mesh carries no lines — its form lives in where the surface bends. <code>linework/import</code> keeps only the <b>feature edges</b> (the outline and hard creases) and hands them back as a rotatable drawing. This runs entirely in your browser; nothing is uploaded.</p>
-    <div class="hero-grid">
-      <div>
-        <div class="board">
-          <svg id="istage" viewBox="0 0 800 600" role="img" aria-label="Imported 3D model rendered as feature-edge linework, drag to orbit">
-            <g id="iscene"></g>
-          </svg>
-          <div class="boardbar">
-            <label data-no-orbit>Creases <input id="iangle" type="range" min="10" max="45" value="25" aria-label="Crease angle threshold"></label>
-            <span id="iperf">—</span>
-          </div>
-        </div>
-        <p class="hint"><b>Drag</b> to orbit · the slider raises the crease threshold (fewer, cleaner edges). Loaded: a CC0 street lantern.</p>
-      </div>
-      <div>
-        <label id="drop" for="ifile" data-no-orbit>
-          <div class="drop-big">Drop a <b>.glb</b> or <b>.obj</b> here<br><span>or click to choose a file</span></div>
-          <input id="ifile" type="file" accept=".glb,.gltf,.obj" hidden>
-        </label>
-        <div id="istat" class="honest" style="margin-top:12px"></div>
-        <pre style="margin-top:14px"><code><span class="k">import</span> { parseGLB, meshToShapes } <span class="k">from</span> <span class="s">"linework/import"</span>;
-
-<span class="k">const</span> meshes = parseGLB(<span class="k">await</span> file.arrayBuffer());
-<span class="k">const</span> shapes = meshToShapes(meshes, {
-  angle: 25, fit: { cx: 400, cy: 300, size: 440 },
-});
-el.innerHTML = render(shapes, view);</code></pre>
-      </div>
-    </div>
-  </div>
-</section>
 
 <section>
   <div class="wrap">
@@ -242,25 +206,14 @@ el.innerHTML = render(shapes, view);</code></pre>
   <div class="wrap">
     <div class="eyebrow">Objectivity</div>
     <h2>The code behind the hero</h2>
-    <pre><code><span class="c">// the sketch layer: context blocks scope parts, tags and layering —</span>
-<span class="c">// authoring should read like drafting, not like assembling tuples</span>
-<span class="k">import</span> { sketch } <span class="k">from</span> <span class="s">"linework/sketch"</span>;
+    <pre><code><span class="c">// the lantern above — a whole glTF mesh becomes linework in three calls</span>
+<span class="k">import</span> { parseGLB, meshToShapes } <span class="k">from</span> <span class="s">"linework/import"</span>;
+<span class="k">import</span> { render } <span class="k">from</span> <span class="s">"linework"</span>;
 
-<span class="k">const</span> s = sketch({ yaw: .5, pitch: .16, f: 1500, cx: 460, cy: 320 });
-
-s.box(300, 380, 320, 42, 40, 80);                <span class="c">// base plate</span>
-
-s.part(<span class="s">"housing"</span>, <span class="s">'class="prt"'</span>, () => {
-  s.cyl([460, 218], 70, 34, -34, <span class="s">"ink"</span>);       <span class="c">// bearing body</span>
-  s.bias(.6, () => s.cap([460, 218], 34, 32, <span class="s">"ink"</span>));  <span class="c">// bore</span>
-});
-
-s.part(<span class="s">"shaft"</span>, <span class="s">'class="prt"'</span>, () =>
-  s.cyl([460, 218], 19, 168, 24, <span class="s">"ink"</span>));      <span class="c">// pulled out</span>
-
-s.note(<span class="s">"320 mm"</span>, [460, 452]);                    <span class="c">// paper space</span>
-el.innerHTML = s.render();                        <span class="c">// depth-sorted SVG</span></code></pre>
-    <p class="honest">Lightly abridged (bolts, balloons and the title block omitted for width) — the full scene is <a href="scene.js">docs/scene.js</a>, <b>the exact module this page executes</b>, written on the same <code>sketch</code> API.</p>
+<span class="k">const</span> meshes = parseGLB(<span class="k">await</span> (<span class="k">await</span> fetch(<span class="s">"lantern.glb"</span>)).arrayBuffer());
+<span class="k">const</span> shapes = meshToShapes(meshes, { angle: 25, fit: { cx: 400, cy: 300, size: 440 } });
+el.innerHTML = render(shapes, { yaw: .6, pitch: .35, f: 1400, cx: 400, cy: 300 });</code></pre>
+    <p class="honest">Feature-edge extraction keeps the outline and hard creases, nothing from the smooth interior of a face — the lines a draftsperson would draw. Prefer to <b>hand-author</b> instead? The <code>sketch</code> layer builds annotated scenes — boxes, cylinders, dimension notes, exploded parts — with scoped context blocks; see <a href="scene.js">docs/scene.js</a> and the <a href="https://github.com/isaacrowntree/linework#the-sketch-layer--dx-is-a-feature">sketch docs</a>.</p>
   </div>
 </section>
 
@@ -327,84 +280,56 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
 </footer>
 
 <script type="module">
-  import { scene, DEFAULT_VIEW } from "./scene.js";
   import { xform, render } from "./linework.js";
   import { line3 } from "./helpers.js";
   import { orbit } from "./orbit.js";
   import { parseGLB, parseOBJ, meshToShapes } from "./import.js";
 
-  /* ---------- live model importer ---------- */
-  const istage = document.getElementById("istage");
-  const iscene = document.getElementById("iscene");
-  const iperf = document.getElementById("iperf");
-  const iangle = document.getElementById("iangle");
-  const istat = document.getElementById("istat");
-  const drop = document.getElementById("drop");
-  const ifile = document.getElementById("ifile");
-  const IVIEW = { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300 };
-  let iMeshes = null, iName = "lantern.glb";
-
-  function importDraw(view) {
-    if (!iMeshes) return;
-    const t0 = performance.now();
-    const shapes = meshToShapes(iMeshes, { angle: +iangle.value, cls: "ink", fit: { cx: 400, cy: 300, size: 440 } });
-    iscene.innerHTML = render(shapes, view);
-    iperf.textContent = `${shapes.length} edges · ${(performance.now() - t0).toFixed(1)} ms`;
-  }
-  const ictl = orbit(istage, { view: IVIEW, idle: 0.08, pitchRange: [0.05, 0.6], onFrame: importDraw });
-  iangle.addEventListener("input", () => ictl.redraw());
-
-  function loadMeshes(meshes, name, tris) {
-    iMeshes = meshes; iName = name;
-    istat.innerHTML = `<b>${name}</b> — ${meshes.length} mesh · ${tris.toLocaleString()} triangles → feature edges, live.`;
-    ictl.redraw();
-  }
-  async function ingest(buf, name) {
-    try {
-      const meshes = name.toLowerCase().endsWith(".obj")
-        ? parseOBJ(new TextDecoder().decode(buf))
-        : parseGLB(buf);
-      const tris = meshes.reduce((a, m) => a + m.indices.length / 3, 0);
-      if (!tris) throw new Error("no geometry found");
-      loadMeshes(meshes, name, tris);
-    } catch (e) {
-      istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${e.message}. Try an uncompressed .glb (no Draco) or .obj.</span>`;
-    }
-  }
-  const readFile = (file) => file.arrayBuffer().then((b) => ingest(b, file.name));
-  ifile.addEventListener("change", () => ifile.files[0] && readFile(ifile.files[0]));
-  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
-  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
-  drop.addEventListener("drop", (e) => {
-    e.preventDefault(); drop.classList.remove("over");
-    if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
-  });
-  // default: the CC0 lantern, imported live on load
-  fetch("./lantern.glb").then((r) => r.arrayBuffer()).then((b) => ingest(b, "lantern.glb (CC0)"))
-    .catch(() => { istat.textContent = "Drop a .glb or .obj to begin."; });
-
-
-  /* ---------- hero: orbit() does the boilerplate — idle sway included ---------- */
+  /* ---------- hero: a glTF mesh imported live, orbiting ---------- */
   const stage = document.getElementById("stage");
   const g = document.getElementById("scene");
   const perf = document.getElementById("perf");
-  const slider = document.getElementById("explode");
-  let e = slider.value / 100;
-  let curView = { ...DEFAULT_VIEW };
+  const hcrease = document.getElementById("hcrease");
+  const istat = document.getElementById("istat");
+  const drop = document.getElementById("drop");
+  const ifile = document.getElementById("ifile");
+  const HVIEW = { yaw: 0.62, pitch: 0.32, f: 1400, cx: 400, cy: 300 };
+  let meshes = null;
 
   function draw(view) {
-    if (view) curView = view;
-    const out = scene(curView, e);
-    g.innerHTML = out.svg;
-    perf.textContent = `${out.count} shapes · sort+emit ${out.ms.toFixed(2)} ms`;
+    if (!meshes) return;
+    const t0 = performance.now();
+    const shapes = meshToShapes(meshes, { angle: +hcrease.value, cls: "ink", fit: { cx: 400, cy: 300, size: 440 } });
+    g.innerHTML = render(shapes, view);
+    perf.textContent = `${shapes.length} edges · ${(performance.now() - t0).toFixed(1)} ms`;
   }
-  const ctl = orbit(stage, {
-    view: DEFAULT_VIEW,
-    idle: 0.1,
-    pitchRange: [-0.25, 0.55],
-    onFrame: draw,
+  const ctl = orbit(stage, { view: HVIEW, idle: 0.08, pitchRange: [0.05, 0.6], onFrame: draw });
+  hcrease.addEventListener("input", () => ctl.redraw());
+
+  function ingest(buf, name) {
+    try {
+      const m = name.toLowerCase().endsWith(".obj")
+        ? parseOBJ(new TextDecoder().decode(buf)) : parseGLB(buf);
+      const tris = m.reduce((a, x) => a + x.indices.length / 3, 0);
+      if (!tris) throw new Error("no geometry found");
+      meshes = m;
+      istat.innerHTML = `<b>${name}</b> — ${m.length} mesh · ${tris.toLocaleString()} triangles → feature edges, live.`;
+      ctl.redraw();
+    } catch (err) {
+      istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${err.message}. Try an uncompressed .glb (no Draco) or .obj.</span>`;
+    }
+  }
+  const readFile = (f) => f.arrayBuffer().then((b) => ingest(b, f.name));
+  ifile.addEventListener("change", () => ifile.files[0] && readFile(ifile.files[0]));
+  drop.addEventListener("dragover", (ev) => { ev.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (ev) => {
+    ev.preventDefault(); drop.classList.remove("over");
+    if (ev.dataTransfer.files[0]) readFile(ev.dataTransfer.files[0]);
   });
-  slider.addEventListener("input", () => { e = slider.value / 100; draw(); });
+  fetch("./lantern.glb").then((r) => r.arrayBuffer()).then((b) => ingest(b, "lantern.glb (CC0)"))
+    .catch(() => { istat.textContent = "Drop a .glb or .obj to begin."; });
+
   document.getElementById("install").addEventListener("click", async () => {
     try { await navigator.clipboard.writeText("npm i linework"); } catch {}
   });
