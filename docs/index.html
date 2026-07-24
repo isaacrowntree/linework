@@ -135,6 +135,17 @@
   @media (max-width: 880px) {
     .hero-grid, .coord-grid { grid-template-columns: 1fr; }
   }
+
+  /* import dropzone */
+  #drop { display: block; cursor: pointer; }
+  .drop-big {
+    border: 2px dashed var(--grid-2); border-radius: 8px; padding: 40px 20px;
+    text-align: center; color: var(--ink); font-size: 16px; background: var(--field-1);
+    transition: border-color .15s, background .15s;
+  }
+  .drop-big span { display: block; margin-top: 6px; color: var(--mut); font-size: 13px; }
+  #drop:hover .drop-big, #drop.over .drop-big { border-color: var(--acc); background: var(--panel); }
+  #iperf { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--acc); }
 </style>
 </head>
 <body>
@@ -148,7 +159,7 @@
       <div class="stats">
         <span class="stat">~180-line core</span>
         <span class="stat">0 deps</span>
-        <span class="stat">13/13 tests</span>
+        <span class="stat">19/19 tests</span>
         <span class="stat">MIT</span>
       </div>
       <div class="install" id="install" title="Click to copy" style="cursor:copy">$ <b>npm i linework</b></div>
@@ -178,6 +189,42 @@
     </div>
   </div>
 </header>
+
+<section id="import">
+  <div class="wrap">
+    <div class="eyebrow">Bring your own model</div>
+    <h2>Drop a 3D model, get a technical drawing</h2>
+    <p class="honest" style="margin-bottom:18px">A shaded mesh carries no lines — its form lives in where the surface bends. <code>linework/import</code> keeps only the <b>feature edges</b> (the outline and hard creases) and hands them back as a rotatable drawing. This runs entirely in your browser; nothing is uploaded.</p>
+    <div class="hero-grid">
+      <div>
+        <div class="board">
+          <svg id="istage" viewBox="0 0 800 600" role="img" aria-label="Imported 3D model rendered as feature-edge linework, drag to orbit">
+            <g id="iscene"></g>
+          </svg>
+          <div class="boardbar">
+            <label data-no-orbit>Creases <input id="iangle" type="range" min="10" max="45" value="25" aria-label="Crease angle threshold"></label>
+            <span id="iperf">—</span>
+          </div>
+        </div>
+        <p class="hint"><b>Drag</b> to orbit · the slider raises the crease threshold (fewer, cleaner edges). Loaded: a CC0 street lantern.</p>
+      </div>
+      <div>
+        <label id="drop" for="ifile" data-no-orbit>
+          <div class="drop-big">Drop a <b>.glb</b> or <b>.obj</b> here<br><span>or click to choose a file</span></div>
+          <input id="ifile" type="file" accept=".glb,.gltf,.obj" hidden>
+        </label>
+        <div id="istat" class="honest" style="margin-top:12px"></div>
+        <pre style="margin-top:14px"><code><span class="k">import</span> { parseGLB, meshToShapes } <span class="k">from</span> <span class="s">"linework/import"</span>;
+
+<span class="k">const</span> meshes = parseGLB(<span class="k">await</span> file.arrayBuffer());
+<span class="k">const</span> shapes = meshToShapes(meshes, {
+  angle: 25, fit: { cx: 400, cy: 300, size: 440 },
+});
+el.innerHTML = render(shapes, view);</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
 
 <section>
   <div class="wrap">
@@ -284,6 +331,58 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
   import { xform, render } from "./linework.js";
   import { line3 } from "./helpers.js";
   import { orbit } from "./orbit.js";
+  import { parseGLB, parseOBJ, meshToShapes } from "./import.js";
+
+  /* ---------- live model importer ---------- */
+  const istage = document.getElementById("istage");
+  const iscene = document.getElementById("iscene");
+  const iperf = document.getElementById("iperf");
+  const iangle = document.getElementById("iangle");
+  const istat = document.getElementById("istat");
+  const drop = document.getElementById("drop");
+  const ifile = document.getElementById("ifile");
+  const IVIEW = { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300 };
+  let iMeshes = null, iName = "lantern.glb";
+
+  function importDraw(view) {
+    if (!iMeshes) return;
+    const t0 = performance.now();
+    const shapes = meshToShapes(iMeshes, { angle: +iangle.value, cls: "ink", fit: { cx: 400, cy: 300, size: 440 } });
+    iscene.innerHTML = render(shapes, view);
+    iperf.textContent = `${shapes.length} edges · ${(performance.now() - t0).toFixed(1)} ms`;
+  }
+  const ictl = orbit(istage, { view: IVIEW, idle: 0.08, pitchRange: [0.05, 0.6], onFrame: importDraw });
+  iangle.addEventListener("input", () => ictl.redraw());
+
+  function loadMeshes(meshes, name, tris) {
+    iMeshes = meshes; iName = name;
+    istat.innerHTML = `<b>${name}</b> — ${meshes.length} mesh · ${tris.toLocaleString()} triangles → feature edges, live.`;
+    ictl.redraw();
+  }
+  async function ingest(buf, name) {
+    try {
+      const meshes = name.toLowerCase().endsWith(".obj")
+        ? parseOBJ(new TextDecoder().decode(buf))
+        : parseGLB(buf);
+      const tris = meshes.reduce((a, m) => a + m.indices.length / 3, 0);
+      if (!tris) throw new Error("no geometry found");
+      loadMeshes(meshes, name, tris);
+    } catch (e) {
+      istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${e.message}. Try an uncompressed .glb (no Draco) or .obj.</span>`;
+    }
+  }
+  const readFile = (file) => file.arrayBuffer().then((b) => ingest(b, file.name));
+  ifile.addEventListener("change", () => ifile.files[0] && readFile(ifile.files[0]));
+  drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+  drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+  drop.addEventListener("drop", (e) => {
+    e.preventDefault(); drop.classList.remove("over");
+    if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+  });
+  // default: the CC0 lantern, imported live on load
+  fetch("./lantern.glb").then((r) => r.arrayBuffer()).then((b) => ingest(b, "lantern.glb (CC0)"))
+    .catch(() => { istat.textContent = "Drop a .glb or .obj to begin."; });
+
 
   /* ---------- hero: orbit() does the boilerplate — idle sway included ---------- */
   const stage = document.getElementById("stage");

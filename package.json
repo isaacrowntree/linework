@@ -1,6 +1,6 @@
 {
   "name": "linework",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Tiny true-3D renderer for annotated technical drawings in SVG — rotate, project, depth-sort, emit strings. Zero dependencies.",
   "type": "module",
   "main": "./dist/linework.js",
@@ -9,7 +9,8 @@
     ".": { "types": "./dist/linework.d.ts", "import": "./dist/linework.js" },
     "./helpers": { "types": "./dist/helpers.d.ts", "import": "./dist/helpers.js" },
     "./sketch": { "types": "./dist/sketch.d.ts", "import": "./dist/sketch.js" },
-    "./orbit": { "types": "./dist/orbit.d.ts", "import": "./dist/orbit.js" }
+    "./orbit": { "types": "./dist/orbit.d.ts", "import": "./dist/orbit.js" },
+    "./import": { "types": "./dist/import.d.ts", "import": "./dist/import.js" }
   },
   "files": ["dist", "src", "README.md", "LICENSE"],
   "license": "MIT",
@@ -17,7 +18,7 @@
   "homepage": "https://isaacrowntree.com/linework/",
   "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js docs/",
+    "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js dist/import.js docs/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "hero": "npm run build && node scripts/render-hero.mjs"

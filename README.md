@@ -54,6 +54,28 @@ el.innerHTML = draw({ yaw, pitch, f: 1500, cx: 460, cy: 320 }, { explode });
 
 Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform()`, and `linework/helpers` sits in between.
 
+## Import a 3D model → a technical drawing
+
+`linework/import` turns a **glTF/GLB or OBJ mesh into linework strokes**. A shaded model carries no lines — its form lives in where the surface bends — so it recovers exactly the lines a draftsperson would draw: the outline and the hard creases, nothing from the smooth interior of a face. The result drops straight into `render()` and rotates like any other scene.
+
+[![A street lantern imported from a glTF mesh and rendered as feature-edge linework](docs/import-lantern.svg)](https://isaacrowntree.com/linework/)
+
+*A CC0 street lantern — 5,394 triangles of shaded mesh → 2,479 feature edges → rotatable line drawing, in one call. [Try it live: drop your own .glb](https://isaacrowntree.com/linework/).*
+
+```ts
+import { parseGLB, meshToShapes } from "linework/import";
+import { render } from "linework";
+
+const meshes = parseGLB(await file.arrayBuffer());          // or parseOBJ(text)
+const shapes = meshToShapes(meshes, {
+  angle: 25,                                                // crease threshold°
+  fit: { cx: 400, cy: 300, size: 440 },                     // fit into a screen box
+});
+el.innerHTML = render(shapes, { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300 });
+```
+
+`featureEdges(mesh)` is exposed on its own if you want the raw edge list. Vertices are welded by position first, so meshes that split a shared edge across primitives still sort as one surface. **No Draco**, and geometry-only — textures and materials are ignored. STEP/true-CAD import is on the roadmap.
+
 ## Coordinates (read this once)
 
 | Field | Meaning |
@@ -85,8 +107,8 @@ The hero image above and this repo's [demo page](https://isaacrowntree.com/linew
 
 ```bash
 npm i linework        # ESM, types included
-npm test              # 13 invariant tests: projection identity, parallax
-                      # direction, paint order, culling, sketch scoping…
+npm test              # 19 tests: projection, parallax, paint order, culling,
+                      # sketch scoping, and feature-edge extraction
 ```
 
 ## Contributing

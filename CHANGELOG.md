@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.2.0] — 2026-07-24
+
+### Added
+- **Model import** (`linework/import`): turn a **glTF/GLB or OBJ mesh** into
+  linework strokes via feature-edge extraction — boundary edges plus sharp
+  creases (configurable `angle`), with vertices welded by position so shared
+  edges aren't mistaken for boundaries. `parseGLB` / `parseOBJ` / `featureEdges`
+  / `meshToShapes`, all zero-dependency; no Draco, geometry-only.
+- Live "drop a .glb / .obj" importer on the demo page, running entirely in the
+  browser, defaulting to a CC0 street lantern (5,394 tris → feature edges).
+- 6 new tests (cube edge count, crease threshold, boundary detection, vertex
+  welding, OBJ parsing, fitted emit). 19 total.
+
+[0.2.0]: https://github.com/isaacrowntree/linework/releases/tag/v0.2.0
+
 ## [0.1.0] — 2026-07-18
 
 First public release.
