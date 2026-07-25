@@ -21,10 +21,10 @@ welcome as long as they keep it that way.
 git clone https://github.com/isaacrowntree/linework
 cd linework
 npm install
-npm test            # 13 invariant tests
+npm test            # unit + invariant tests
 npm run typecheck
 npm run build       # tsc → dist/ (ESM + .d.ts)
-npm run hero        # regenerate docs/hero.svg (server-side render demo)
+npm run images      # regenerate the README hero image (server-side, in Node)
 ```
 
 The demo page under `docs/` is served by GitHub Pages and doubles as a manual
@@ -38,8 +38,9 @@ test surface — open `docs/index.html` (any static server) and drag the drawing
 | `src/helpers.ts` | Primitive builders (`tube`, `box3`, `cyl3`, `disc`…) |
 | `src/sketch.ts` | Fluent authoring layer with scoped context blocks |
 | `src/orbit.ts` | Drag-to-orbit interaction helper |
+| `src/import.ts` | Mesh importers (glTF/OBJ/STL/three.js/STEP) → feature edges |
 | `docs/` | The live demo page + generated hero |
-| `scripts/render-hero.mjs` | Server-side render of the README image |
+| `scripts/gen-import-demo.mjs` | Server-side render of the README hero from the sample model |
 
 ## Submitting
 

@@ -49,6 +49,6 @@ First public release.
 - **Helpers** (`linework/helpers`): the primitive-builder middle layer.
 - 13 invariant tests, GitHub Actions CI, ESM build with type declarations.
 - Blueprint demo site rendered entirely by the library; server-side hero image
-  via `npm run hero`.
+  rendered in Node.
 
 [0.1.0]: https://github.com/isaacrowntree/linework/releases/tag/v0.1.0
