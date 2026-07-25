@@ -51,3 +51,4 @@ export function orbit(el, o) {
         requestAnimationFrame(sway);
     return { view: v, redraw: () => o.onFrame({ ...v }), stop: () => { stopped = true; idleOn = false; } };
 }
+//# sourceMappingURL=orbit.js.map

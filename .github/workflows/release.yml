@@ -1,0 +1,33 @@
+name: release
+# Publishes to npm with build provenance when a v* tag is pushed.
+#
+# One-time setup (pick one):
+#   A. Trusted publishing (recommended, no token): on npmjs.com → the linework
+#      package → Settings → Trusted Publisher → GitHub Actions, repo
+#      isaacrowntree/linework, workflow release.yml. Then no secret is needed.
+#   B. Token: add a repo secret NPM_TOKEN (a granular publish token).
+# Either way, --provenance attaches a signed, verifiable attestation that the
+# build came from this repo.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  id-token: write # OIDC — required for provenance and trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+      - run: npm install -g npm@latest # ensure OIDC / provenance support
+      - run: npm ci
+      - run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

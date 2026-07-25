@@ -1,6 +1,6 @@
 /**
  * Invariant tests for the iso renderer — the same test-driven ethos as
- * bike-shock-planner: if the projection or sorting silently breaks, a
+ * bike-part-planner: if the projection or sorting silently breaks, a
  * drawing full of confident-looking wrong geometry is worse than a crash.
  */
 import { describe, it, expect } from "vitest";

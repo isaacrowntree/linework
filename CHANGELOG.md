@@ -16,6 +16,27 @@ All notable changes to this project are documented here. Format follows
 
 [occt-import-js]: https://github.com/kovacsv/occt-import-js
 
+## [0.4.0] — 2026-07-25
+
+### Security
+- **Hardened GLB parsing against untrusted input.** The parser validates the
+  header, version, and chunk lengths, bounds-checks every accessor byte range
+  before reading, caps per-accessor element counts, guards against cyclic node
+  graphs, and wraps JSON parsing — a malformed or malicious file now throws a
+  typed `Error` instead of reading out of bounds, over-allocating, or looping
+  forever. Added [`SECURITY.md`](SECURITY.md) with a reporting policy and the
+  parsing threat model.
+- Adversarial parser tests: bad magic, truncated buffer, oversized JSON chunk,
+  out-of-bounds accessor count, unknown component type, cyclic node graph.
+
+### Added
+- `engines` (Node ≥ 18), `sideEffects: false` (tree-shaking), inlined-source
+  build source maps, and an Environments/compatibility table in the README.
+- Tooling: ESLint (flat config) + typescript-eslint, coverage (`test:coverage`),
+  Dependabot (npm + actions), `.editorconfig`, `.nvmrc`.
+- CI: Node 20/22/24 matrix, least-privilege token permissions, lint step.
+- `release.yml` — publishes to npm with build **provenance** on a `v*` tag.
+
 ## [0.2.0] — 2026-07-24
 
 ### Added

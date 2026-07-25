@@ -57,3 +57,4 @@ export function cyl3(X, p, r, zNear, zFar, capCls = "cap3", opt = {}) {
         { t: "face", c: v3(p, zNear), r, strokes: [{ cls: capCls }], ...opt, bias: (opt.bias ?? 0) + 0.5 },
     ];
 }
+//# sourceMappingURL=helpers.js.map

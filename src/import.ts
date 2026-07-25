@@ -64,7 +64,11 @@ function applyMat(m: Mat4, x: number, y: number, z: number): [number, number, nu
   ];
 }
 
-const COMPONENT: Record<number, { array: any; size: number }> = {
+interface TypedArrayCtor {
+  new (buffer: ArrayBufferLike, byteOffset: number, length: number): ArrayLike<number>;
+  BYTES_PER_ELEMENT: number;
+}
+const COMPONENT: Record<number, { array: TypedArrayCtor; size: number }> = {
   5120: { array: Int8Array, size: 1 },
   5121: { array: Uint8Array, size: 1 },
   5122: { array: Int16Array, size: 2 },
@@ -74,47 +78,90 @@ const COMPONENT: Record<number, { array: any; size: number }> = {
 };
 const NUM_COMPONENTS: Record<string, number> = { SCALAR: 1, VEC2: 2, VEC3: 3, VEC4: 4, MAT4: 16 };
 
-/** Parse a .glb ArrayBuffer into world-space meshes. */
+const GLB_MAGIC = 0x46546c67, GLB_VERSION = 2, GLB_JSON = 0x4e4f534a, GLB_BIN = 0x004e4942;
+/** Hard cap on elements read from any one accessor — guards against a malicious
+ *  or corrupt count triggering a giant allocation or an out-of-bounds read. */
+const MAX_ACCESSOR_ELEMENTS = 64_000_000;
+
+/** `glTF` JSON is untrusted; type it loosely but bounds-check every value. */
+type GltfJson = {
+  scene?: number;
+  scenes?: { nodes?: number[] }[];
+  nodes?: { mesh?: number; matrix?: number[]; translation?: number[]; rotation?: number[]; scale?: number[]; children?: number[] }[];
+  meshes?: { name?: string; primitives: { attributes: Record<string, number>; indices?: number }[] }[];
+  accessors?: { bufferView: number; byteOffset?: number; componentType: number; count: number; type: string }[];
+  bufferViews?: { buffer: number; byteOffset?: number; byteLength?: number }[];
+};
+
+const fail = (msg: string): never => { throw new Error("[import] " + msg); };
+
+/**
+ * Parse a `.glb` ArrayBuffer into world-space meshes. **Input is treated as
+ * untrusted:** every offset and length read from the file is bounds-checked
+ * before use, element counts are capped, and cyclic node graphs are guarded,
+ * so a malformed or malicious file throws a typed `Error` rather than reading
+ * out of bounds, over-allocating, or looping forever.
+ */
 export function parseGLB(buffer: ArrayBuffer): Mesh[] {
   const dv = new DataView(buffer);
-  if (dv.getUint32(0, true) !== 0x46546c67) throw new Error("[import] not a GLB (bad magic)");
+  if (dv.byteLength < 12) fail("truncated GLB (no header)");
+  if (dv.getUint32(0, true) !== GLB_MAGIC) fail("not a GLB (bad magic)");
+  if (dv.getUint32(4, true) !== GLB_VERSION) fail("unsupported GLB version (need 2)");
+  if (dv.getUint32(8, true) > dv.byteLength) fail("declared length exceeds the buffer");
+  if (dv.byteLength < 20) fail("truncated GLB (no JSON chunk)");
   const jsonLen = dv.getUint32(12, true);
-  const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 20, jsonLen)));
+  if (dv.getUint32(16, true) !== GLB_JSON) fail("first chunk is not JSON");
+  if (20 + jsonLen > dv.byteLength) fail("JSON chunk length exceeds the buffer");
+  let json: GltfJson;
+  try { json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 20, jsonLen))); }
+  catch { return fail("invalid glTF JSON"); }
   // BIN chunk follows the JSON chunk
   let bin: Uint8Array | null = null;
   let off = 20 + jsonLen;
-  while (off < dv.byteLength) {
+  while (off + 8 <= dv.byteLength) {
     const len = dv.getUint32(off, true), type = dv.getUint32(off + 4, true);
-    if (type === 0x004e4942) bin = new Uint8Array(buffer, off + 8, len); // "BIN\0"
+    if (off + 8 + len > dv.byteLength) fail("chunk length exceeds the buffer");
+    if (type === GLB_BIN) bin = new Uint8Array(buffer, off + 8, len);
     off += 8 + len + ((4 - (len % 4)) % 4);
   }
-  return extractMeshes(json, bin, buffer);
+  return extractMeshes(json, bin);
 }
 
-function readAccessor(json: any, bin: Uint8Array | null, buffer: ArrayBuffer, index: number): Float64Array {
-  const acc = json.accessors[index];
-  const bv = json.bufferViews[acc.bufferView];
+function readAccessor(json: GltfJson, bin: Uint8Array | null, index: number): Float64Array {
+  const acc = json.accessors?.[index];
+  if (!acc) return fail(`accessor ${index} not found`);
+  const bv = json.bufferViews?.[acc.bufferView];
+  if (!bv) return fail(`bufferView ${acc.bufferView} not found`);
   const comp = COMPONENT[acc.componentType];
   const n = NUM_COMPONENTS[acc.type];
+  if (!comp || !n) return fail(`unsupported accessor type (${acc.type} / ${acc.componentType})`);
+  const count = acc.count >>> 0;
+  if (count * n > MAX_ACCESSOR_ELEMENTS) return fail("accessor too large");
+  if (!bin) return fail("external buffers not supported — use a .glb");
   const base = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
-  if (!bin) throw new Error("[import] external buffers not supported — use a .glb");
-  const src = new comp.array(bin.buffer, bin.byteOffset + base, acc.count * n);
-  return Float64Array.from(src as ArrayLike<number>);
+  if (base < 0 || base + count * n * comp.size > bin.byteLength) return fail("accessor range is out of bounds");
+  const src = new comp.array(bin.buffer, bin.byteOffset + base, count * n);
+  return Float64Array.from(src);
 }
 
-function extractMeshes(json: any, bin: Uint8Array | null, buffer: ArrayBuffer): Mesh[] {
+function extractMeshes(json: GltfJson, bin: Uint8Array | null): Mesh[] {
   const out: Mesh[] = [];
   const scene = json.scenes?.[json.scene ?? 0];
-  const roots: number[] = scene?.nodes ?? json.nodes?.map((_: any, i: number) => i) ?? [];
+  const roots: number[] = scene?.nodes ?? json.nodes?.map((_, i) => i) ?? [];
+  const seen = new Set<number>();
 
   const walk = (nodeIdx: number, parent: Mat4) => {
-    const node = json.nodes[nodeIdx];
+    if (seen.has(nodeIdx)) return; // guard against cyclic node graphs
+    seen.add(nodeIdx);
+    const node = json.nodes?.[nodeIdx];
+    if (!node) return;
     const local = node.matrix ? (node.matrix as Mat4) : fromTRS(node.translation, node.rotation, node.scale);
     const world = matMul(parent, local);
     if (node.mesh != null) {
-      for (const prim of json.meshes[node.mesh].primitives) {
+      const mesh = json.meshes?.[node.mesh];
+      for (const prim of mesh?.primitives ?? []) {
         if (prim.attributes.POSITION == null) continue;
-        const pos = readAccessor(json, bin, buffer, prim.attributes.POSITION);
+        const pos = readAccessor(json, bin, prim.attributes.POSITION);
         const world3 = new Float32Array(pos.length);
         for (let i = 0; i < pos.length; i += 3) {
           const [x, y, z] = applyMat(world, pos[i], pos[i + 1], pos[i + 2]);
@@ -122,12 +169,12 @@ function extractMeshes(json: any, bin: Uint8Array | null, buffer: ArrayBuffer): 
         }
         let indices: Uint32Array;
         if (prim.indices != null) {
-          indices = Uint32Array.from(readAccessor(json, bin, buffer, prim.indices));
+          indices = Uint32Array.from(readAccessor(json, bin, prim.indices));
         } else {
           indices = new Uint32Array(pos.length / 3);
           for (let i = 0; i < indices.length; i++) indices[i] = i;
         }
-        out.push({ positions: world3, indices, name: json.meshes[node.mesh].name });
+        out.push({ positions: world3, indices, name: mesh?.name });
       }
     }
     for (const child of node.children ?? []) walk(child, world);
@@ -262,7 +309,7 @@ export function featureEdges(mesh: Mesh, opts: EdgeOptions = {}): [V3, V3][] {
   const p = mesh.positions, idx = mesh.indices;
 
   // weld vertices by quantized position so shared edges are detected
-  let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+  const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
   for (let i = 0; i < p.length; i += 3)
     for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], p[i + k]); max[k] = Math.max(max[k], p[i + k]); }
   const diag = Math.hypot(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
@@ -328,7 +375,7 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
   // fit transform (uniform scale about the model center → screen box)
   let map = (v: V3): V3 => v;
   if (opts.fit) {
-    let min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
+    const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
     for (const [a, b] of allEdges)
       for (const v of [a, b])
         for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], v[k]); max[k] = Math.max(max[k], v[k]); }

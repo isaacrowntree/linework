@@ -15,7 +15,7 @@
  *     });
  *     el.innerHTML = draw({ yaw, pitch, f: 1500, cx: 460, cy: 320 }, { e });
  */
-import { render, xform, type Shape, type Stroke, type View, type Cmd, type V3, type PartDef, type Pt } from "./linework.js";
+import { render, xform, type Shape, type Stroke, type View, type V3, type PartDef, type Pt } from "./linework.js";
 
 export type P2 = [number, number];
 

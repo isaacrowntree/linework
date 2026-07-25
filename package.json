@@ -1,10 +1,11 @@
 {
   "name": "linework",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Tiny true-3D renderer for annotated technical drawings in SVG — rotate, project, depth-sort, emit strings. Zero dependencies.",
   "type": "module",
   "main": "./dist/linework.js",
   "types": "./dist/linework.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": { "types": "./dist/linework.d.ts", "import": "./dist/linework.js" },
     "./helpers": { "types": "./dist/helpers.d.ts", "import": "./dist/helpers.js" },
@@ -12,20 +13,29 @@
     "./orbit": { "types": "./dist/orbit.d.ts", "import": "./dist/orbit.js" },
     "./import": { "types": "./dist/import.d.ts", "import": "./dist/import.js" }
   },
-  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md"],
+  "files": ["dist", "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md"],
   "license": "MIT",
-  "repository": "github:isaacrowntree/linework",
+  "author": "Isaac Rowntree",
+  "repository": { "type": "git", "url": "git+https://github.com/isaacrowntree/linework.git" },
+  "bugs": "https://github.com/isaacrowntree/linework/issues",
   "homepage": "https://isaacrowntree.com/linework/",
-  "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint"],
+  "engines": { "node": ">=18" },
+  "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint", "gltf", "stl"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js dist/import.js docs/",
+    "build": "tsc -p tsconfig.build.json && cp dist/*.js dist/*.js.map docs/",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "images": "npm run build && node scripts/gen-import-demo.mjs",
-    "prepublishOnly": "npm run build && npm test"
+    "prepublishOnly": "npm run lint && npm run build && npm test"
   },
   "devDependencies": {
+    "@eslint/js": "^9.13.0",
+    "@vitest/coverage-v8": "^4.1.10",
+    "eslint": "^9.13.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.10.0",
     "vitest": "^4.1.10"
   }
 }

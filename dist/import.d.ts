@@ -24,7 +24,13 @@ export interface Mesh {
     indices: Uint32Array;
     name?: string;
 }
-/** Parse a .glb ArrayBuffer into world-space meshes. */
+/**
+ * Parse a `.glb` ArrayBuffer into world-space meshes. **Input is treated as
+ * untrusted:** every offset and length read from the file is bounds-checked
+ * before use, element counts are capped, and cyclic node graphs are guarded,
+ * so a malformed or malicious file throws a typed `Error` rather than reading
+ * out of bounds, over-allocating, or looping forever.
+ */
 export declare function parseGLB(buffer: ArrayBuffer): Mesh[];
 /** Parse a Wavefront .obj string into a single mesh (triangulated). */
 export declare function parseOBJ(text: string): Mesh[];

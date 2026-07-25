@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, type Mesh } from "./import";
 
 /** unit cube, 8 shared corners, 12 triangles — closed, all creases 90° */
 function cube(): Mesh {
@@ -120,6 +120,76 @@ describe("occt-import-js (STEP/IGES) adapter", () => {
     const meshes = fromOcct(occtResult);
     expect(meshes.length).toBe(1);
     expect(featureEdges(meshes[0]).length).toBe(12);
+  });
+});
+
+/** Build a minimal valid GLB from a mesh; opts can corrupt fields for the
+ *  untrusted-input tests. */
+function buildGLB(m: Mesh, opts: { posCount?: number; componentType?: number; cyclic?: boolean } = {}): ArrayBuffer {
+  const pos = m.positions, idx = m.indices;
+  const bin = new Uint8Array(pos.byteLength + idx.byteLength);
+  bin.set(new Uint8Array(pos.buffer), 0);
+  bin.set(new Uint8Array(idx.buffer), pos.byteLength);
+  const nodes: any[] = [{ mesh: 0 }];
+  if (opts.cyclic) { nodes[0].children = [1]; nodes.push({ children: [0] }); } // node 0 ↔ 1 cycle
+  const json = {
+    asset: { version: "2.0" }, scene: 0, scenes: [{ nodes: [0] }], nodes,
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, indices: 1 }] }],
+    accessors: [
+      { bufferView: 0, componentType: opts.componentType ?? 5126, count: opts.posCount ?? pos.length / 3, type: "VEC3" },
+      { bufferView: 1, componentType: 5125, count: idx.length, type: "SCALAR" },
+    ],
+    bufferViews: [
+      { buffer: 0, byteOffset: 0, byteLength: pos.byteLength },
+      { buffer: 0, byteOffset: pos.byteLength, byteLength: idx.byteLength },
+    ],
+    buffers: [{ byteLength: bin.length }],
+  };
+  const enc = new TextEncoder();
+  let jsonBytes = enc.encode(JSON.stringify(json));
+  while (jsonBytes.length % 4) jsonBytes = Uint8Array.from([...jsonBytes, 0x20]);
+  let binPad = bin;
+  if (binPad.length % 4) binPad = Uint8Array.from([...binPad, ...new Array(4 - (binPad.length % 4)).fill(0)]);
+  const total = 12 + 8 + jsonBytes.length + 8 + binPad.length;
+  const out = new Uint8Array(total), dv = new DataView(out.buffer);
+  dv.setUint32(0, 0x46546c67, true); dv.setUint32(4, 2, true); dv.setUint32(8, total, true);
+  dv.setUint32(12, jsonBytes.length, true); dv.setUint32(16, 0x4e4f534a, true);
+  out.set(jsonBytes, 20);
+  const o = 20 + jsonBytes.length;
+  dv.setUint32(o, binPad.length, true); dv.setUint32(o + 4, 0x004e4942, true);
+  out.set(binPad, o + 8);
+  return out.buffer;
+}
+
+describe("GLB parsing — untrusted input is bounds-checked", () => {
+  it("round-trips a valid GLB", () => {
+    const meshes = parseGLB(buildGLB(cube()));
+    expect(meshes.length).toBe(1);
+    expect(featureEdges(meshes[0]).length).toBe(12);
+  });
+  it("rejects an empty / truncated buffer", () => {
+    expect(() => parseGLB(new ArrayBuffer(0))).toThrow(/truncated|GLB/);
+    expect(() => parseGLB(new ArrayBuffer(8))).toThrow();
+  });
+  it("rejects a bad magic number", () => {
+    const buf = buildGLB(cube());
+    new DataView(buf).setUint32(0, 0xdeadbeef, true);
+    expect(() => parseGLB(buf)).toThrow(/magic/);
+  });
+  it("rejects an oversized JSON chunk length", () => {
+    const buf = buildGLB(cube());
+    new DataView(buf).setUint32(12, 0xffffff, true); // jsonLen way past the buffer
+    expect(() => parseGLB(buf)).toThrow(/JSON chunk length|exceeds/);
+  });
+  it("rejects an accessor whose count runs past the binary chunk (no OOB read)", () => {
+    expect(() => parseGLB(buildGLB(cube(), { posCount: 9_000_000 }))).toThrow(/out of bounds|too large/);
+  });
+  it("rejects an unsupported accessor component type", () => {
+    expect(() => parseGLB(buildGLB(cube(), { componentType: 9999 }))).toThrow(/unsupported/);
+  });
+  it("does not hang on a cyclic node graph", () => {
+    const meshes = parseGLB(buildGLB(cube(), { cyclic: true })); // must return, not loop forever
+    expect(meshes.length).toBe(1);
   });
 });
 

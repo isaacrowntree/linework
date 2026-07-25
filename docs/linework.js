@@ -131,3 +131,4 @@ export function render(shapes, view, parts = {}) {
     slots.sort((a, b) => a.depth - b.depth); // far → near
     return slots.map((s) => s.svg).join("");
 }
+//# sourceMappingURL=linework.js.map

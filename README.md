@@ -124,6 +124,19 @@ npm test              # projection, parallax, paint order, culling,
                       # sketch scoping, and feature-edge extraction
 ```
 
+## Compatibility
+
+**ESM-only** (no CJS build), **Node ≥ 18**, zero runtime dependencies. Which entry runs where:
+
+| Entry | Runs in | Notes |
+|---|---|---|
+| `linework` · `/helpers` · `/sketch` · `/import` | Node **and** browser | pure functions; `import` uses `TextDecoder`/`DataView`, both universal |
+| `linework/orbit` | **browser only** | uses `requestAnimationFrame`, `matchMedia`, `performance` |
+
+`render()` and the importers run server-side, so you can generate diagrams at build time (see [Server-side rendering](#server-side-rendering)); only the drag-to-orbit helper needs a browser. Imported files are treated as **untrusted input** — see [SECURITY.md](SECURITY.md) for the parsing threat model.
+
+**Versioning:** while `0.x`, minor releases may contain breaking changes and patch releases won't. From `1.0`, standard semver — a breaking change to the public API bumps the major. Releases publish from CI with [provenance](https://docs.npmjs.com/generating-provenance-statements).
+
 ## Contributing
 
 Small, dependency-free, and test-driven on purpose — see [CONTRIBUTING.md](CONTRIBUTING.md). Changes are tracked in [CHANGELOG.md](CHANGELOG.md). Issues and PRs welcome.
