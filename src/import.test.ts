@@ -1,5 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, type Mesh } from "./import";
+
+describe("fitCircle + circlePoints (L8 — round mechanical parts become true circles)", () => {
+  const poly = (n: number, r = 2, cz = 0): any[] =>
+    Array.from({ length: n }, (_, i) => [Math.cos((i / n) * 2 * Math.PI) * r, Math.sin((i / n) * 2 * Math.PI) * r, cz]);
+
+  it("detects a many-sided polygon as a circle (centre + radius)", () => {
+    const c = fitCircle(poly(16, 2));
+    expect(c).not.toBeNull();
+    expect(c!.radius).toBeCloseTo(2, 1);
+    for (const k of c!.center) expect(Math.abs(k)).toBeLessThan(1e-6);
+  });
+
+  it("rejects a square (too few sides — a real corner, not a circle)", () => {
+    expect(fitCircle(poly(4))).toBeNull();
+  });
+
+  it("rejects a non-uniform blob (not round)", () => {
+    const pts = poly(16, 2).map((p, i) => (i % 2 ? [p[0] * 1.6, p[1] * 1.6, p[2]] : p)); // lumpy
+    expect(fitCircle(pts as any)).toBeNull();
+  });
+
+  it("circlePoints resamples a fitted circle into many even points on it", () => {
+    const c = fitCircle(poly(12, 3))!;
+    const pts = circlePoints(c, 48);
+    expect(pts.length).toBe(48);
+    for (const p of pts) expect(Math.hypot(p[0], p[1])).toBeCloseTo(3, 4); // all on the circle
+  });
+});
 
 describe("chainEdges + smoothPath (L7 — round faceted curves)", () => {
   const ring = (n: number, r = 1): [any, any][] => {

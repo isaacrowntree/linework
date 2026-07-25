@@ -414,7 +414,11 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
 
   if (opts.smooth) {
     return chains.map((c) => {
-      const sh: any = { t: "path", d: smoothPath(c.points.map(map), c.closed), strokes: [{ cls }] };
+      // a closed loop that IS a circle (wheel/chainring/rotor) → resample to a
+      // true circle at its real centre+radius, so it's perfectly round (L8).
+      const circ = c.closed ? fitCircle(c.points) : null;
+      const pts = circ ? circlePoints(circ, 48) : c.points;
+      const sh: any = { t: "path", d: smoothPath(pts.map(map), c.closed), strokes: [{ cls }] };
       if (c.part) sh.part = c.part;
       return sh as Shape;
     });
@@ -573,6 +577,55 @@ export function chainEdges(edges: [V3, V3][], opts: { weld?: number; throughJunc
 }
 
 const mid3 = (a: V3, b: V3): V3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+const sub3 = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a: V3, b: V3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a: V3, b: V3): V3 => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = (v: V3): V3 => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+
+export interface FittedCircle { center: V3; radius: number; u: V3; v: V3 }
+
+/**
+ * Fit a circle to a closed point loop (L8) — a wheel / chainring / rotor / cog is
+ * radially symmetric, so a TRUE circle at its real centre + radius is both
+ * perfectly round and more accurate than any low-poly polygon. Returns null when
+ * the loop isn't a circle (too few sides, non-uniform radius, or non-planar), so
+ * frame parts are never mistaken for wheels.
+ */
+export function fitCircle(points: V3[]): FittedCircle | null {
+  const n = points.length;
+  if (n < 8) return null; // a real circle-polygon has many sides; a square/hex corner does not
+  const center: V3 = [0, 0, 0];
+  for (const p of points) { center[0] += p[0]; center[1] += p[1]; center[2] += p[2]; }
+  center[0] /= n; center[1] /= n; center[2] /= n;
+  // plane normal via Newell's method
+  let nx = 0, ny = 0, nz = 0;
+  for (let i = 0; i < n; i++) {
+    const a = points[i], b = points[(i + 1) % n];
+    nx += (a[1] - b[1]) * (a[2] + b[2]); ny += (a[2] - b[2]) * (a[0] + b[0]); nz += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  const normal = norm3([nx, ny, nz]);
+  const ref: V3 = Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+  const u = norm3(cross3(normal, ref));
+  const v = cross3(normal, u);
+  // radius uniformity + planarity
+  let rmean = 0; const rs: number[] = [];
+  for (const p of points) { const d = sub3(p, center); const r = Math.hypot(dot3(d, u), dot3(d, v)); rs.push(r); rmean += r; }
+  rmean /= n;
+  if (rmean < 1e-6) return null;
+  let rvar = 0, planar = 0;
+  for (let i = 0; i < n; i++) { rvar += (rs[i] - rmean) ** 2; planar = Math.max(planar, Math.abs(dot3(sub3(points[i], center), normal))); }
+  if (Math.sqrt(rvar / n) / rmean > 0.12) return null; // radius not uniform → not a circle
+  if (planar / rmean > 0.15) return null; // not flat → not a wheel-plane circle
+  return { center, radius: rmean, u, v };
+}
+
+/** Resample a fitted circle into `segments` even points on it (in its plane). */
+export function circlePoints(c: FittedCircle, segments = 48): V3[] {
+  return Array.from({ length: segments }, (_, i) => {
+    const t = (i / segments) * 2 * Math.PI, ct = Math.cos(t) * c.radius, st = Math.sin(t) * c.radius;
+    return [c.center[0] + ct * c.u[0] + st * c.v[0], c.center[1] + ct * c.u[1] + st * c.v[1], c.center[2] + ct * c.u[2] + st * c.v[2]] as V3;
+  });
+}
 
 /**
  * Turn a chain of points into a SMOOTH path (L7) via midpoint quadratic Béziers
