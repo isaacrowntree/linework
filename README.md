@@ -59,7 +59,7 @@ Prefer bare metal? `linework` exports the raw `Shape` types + `render()`/`xform(
 
 `linework/import` turns a **3D mesh — glTF/GLB, OBJ, STL, or a three.js `BufferGeometry` — into linework strokes**. A shaded model carries no lines — its form lives in where the surface bends — so it recovers exactly the lines a draftsperson would draw: the outline and the hard creases, nothing from the smooth interior of a face. The result drops straight into `render()` and rotates like any other scene.
 
-*(That lantern in the header is exactly this: a CC0 glTF — 5,394 triangles of shaded mesh → 2,479 feature edges → rotatable line drawing, in one `meshToShapes()` call. [Drop your own .glb on the demo](https://isaacrowntree.com/linework/).)*
+*(That lantern in the header is exactly this: a CC0 glTF — 5,394 triangles of shaded mesh → ~2,500 feature edges → rotatable line drawing, in one `meshToShapes()` call. [Drop your own .glb on the demo](https://isaacrowntree.com/linework/).)*
 
 ```ts
 import { parseGLB, meshToShapes } from "linework/import";
@@ -114,7 +114,7 @@ import { writeFileSync } from "node:fs";
 writeFileSync("diagram.svg", wrapInSvgTag(render(shapes, view)));
 ```
 
-The hero image above and this repo's [demo page](https://isaacrowntree.com/linework/) are both drawn this way — see [`scripts/render-hero.mjs`](scripts/render-hero.mjs) and [`docs/scene.js`](docs/scene.js).
+The lantern hero above is generated exactly this way — [`scripts/gen-import-demo.mjs`](scripts/gen-import-demo.mjs) imports the committed model and renders the SVG in Node (`npm run images`); the [demo page](https://isaacrowntree.com/linework/) runs the same code live. For a hand-authored server-side example, see [`docs/scene.js`](docs/scene.js).
 
 ## Install & test
 

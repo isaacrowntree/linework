@@ -21,7 +21,7 @@
     "build": "tsc -p tsconfig.build.json && cp dist/linework.js dist/helpers.js dist/sketch.js dist/orbit.js dist/import.js docs/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "hero": "npm run build && node scripts/render-hero.mjs",
+    "images": "npm run build && node scripts/gen-import-demo.mjs",
     "prepublishOnly": "npm run build && npm test"
   },
   "devDependencies": {
