@@ -360,24 +360,36 @@ export interface ImportOptions extends EdgeOptions {
   fit?: { cx: number; cy: number; size: number };
   /** flip Y (glTF is Y-up; screen space is Y-down). Default true. */
   flipY?: boolean;
+  /** tag each emitted Shape with its source mesh `name` as `part` — so the
+   *  consumer can annotate, explode, swap or depth-sort per part (L1). */
+  grouped?: boolean;
 }
 
 /**
  * One-call convenience: meshes → feature edges → linework Shapes, fitted
  * to a screen box. Feed the result straight to render()/sketch.
+ *
+ * With `grouped: true`, each shape carries `part` = its source mesh name, so a
+ * multi-mesh model (a bike: frame / wheels / drivetrain) keeps per-part identity
+ * for annotation, exploded views, and per-object depth sorting. Parts share one
+ * global fit transform, so their relative positions are preserved.
  */
 export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] {
   const cls = opts.cls ?? "ink";
   const flipY = opts.flipY ?? true;
-  const allEdges: [V3, V3][] = [];
-  for (const m of meshes) allEdges.push(...featureEdges(m, opts));
+  // keep each edge's source part alongside it (used only when grouped)
+  const edges: { e: [V3, V3]; part?: string }[] = [];
+  for (const m of meshes) {
+    const part = opts.grouped ? m.name : undefined;
+    for (const e of featureEdges(m, opts)) edges.push({ e, part });
+  }
 
-  // fit transform (uniform scale about the model center → screen box)
+  // fit transform (uniform scale about the model center → screen box), global
   let map = (v: V3): V3 => v;
   if (opts.fit) {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-    for (const [a, b] of allEdges)
-      for (const v of [a, b])
+    for (const { e } of edges)
+      for (const v of e)
         for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], v[k]); max[k] = Math.max(max[k], v[k]); }
     const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
     const s = opts.fit.size / span;
@@ -388,9 +400,35 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
     map = (v) => [v[0], -v[1], v[2]];
   }
 
-  return allEdges.map(([a, b]) => ({
-    t: "path",
-    d: [["M", map(a)], ["L", map(b)]],
-    strokes: [{ cls }],
-  }) as Shape);
+  return edges.map(({ e: [a, b], part }) => {
+    const sh: any = { t: "path", d: [["M", map(a)], ["L", map(b)]], strokes: [{ cls }] };
+    if (part) sh.part = part;
+    return sh as Shape;
+  });
+}
+
+export interface MeshGroup {
+  name: string;
+  /** this part's feature edges, in model coordinates (unfitted) */
+  edges: [V3, V3][];
+  /** part centroid (mean vertex), for explode offsets + callout anchors */
+  centroid: V3;
+}
+
+/**
+ * Per-part geometry for annotation/explode: each mesh's feature edges plus its
+ * centroid (mean vertex). Unnamed meshes get a positional fallback name.
+ */
+export function meshGroups(meshes: Mesh[], opts: EdgeOptions = {}): MeshGroup[] {
+  return meshes.map((m, i) => {
+    const p = m.positions;
+    let cx = 0, cy = 0, cz = 0;
+    const n = p.length / 3 || 1;
+    for (let j = 0; j < p.length; j += 3) { cx += p[j]; cy += p[j + 1]; cz += p[j + 2]; }
+    return {
+      name: m.name ?? `part-${i}`,
+      edges: featureEdges(m, opts),
+      centroid: [cx / n, cy / n, cz / n] as V3,
+    };
+  });
 }

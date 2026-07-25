@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, type Mesh } from "./import";
 
 /** unit cube, 8 shared corners, 12 triangles — closed, all creases 90° */
 function cube(): Mesh {
@@ -109,6 +109,42 @@ describe("three.js BufferGeometry adapter", () => {
     const m = fromBufferGeometry(geo);
     expect(m.indices.length).toBe(3);
     expect(featureEdges(m).length).toBe(3);
+  });
+});
+
+describe("grouped import (L1 — per-part identity for annotation/explode/swap)", () => {
+  const named = (name: string): Mesh => ({ ...cube(), name });
+
+  it("tags each shape with its source mesh name when grouped", () => {
+    const shapes = meshToShapes([named("frame"), named("wheel")], { grouped: true });
+    const parts = new Set(shapes.map((s) => (s as any).part));
+    expect(parts.has("frame")).toBe(true);
+    expect(parts.has("wheel")).toBe(true);
+    expect(shapes.every((s) => (s as any).part)).toBe(true); // nothing left untagged
+  });
+
+  it("ungrouped (default) leaves shapes untagged — unchanged behaviour", () => {
+    const shapes = meshToShapes([named("frame")]);
+    expect(shapes.every((s) => !(s as any).part)).toBe(true);
+  });
+
+  it("grouped parts still share one coordinate frame (fit is global)", () => {
+    // two boxes offset in x → fitting keeps their relative positions
+    const a = named("a");
+    const b: Mesh = { ...cube(), name: "b", positions: cube().positions.map((v, i) => (i % 3 === 0 ? v + 10 : v)) as any };
+    const shapes = meshToShapes([a, b], { grouped: true, fit: { cx: 0, cy: 0, size: 100 } });
+    const xs = (p: string) => shapes.filter((s) => (s as any).part === p).flatMap((s: any) => s.d.map((c: any) => c[1][0]));
+    expect(Math.max(...xs("b"))).toBeGreaterThan(Math.max(...xs("a"))); // b sits to a's right
+  });
+
+  it("meshGroups returns per-part edges + centroid", () => {
+    const groups = meshGroups([named("frame")]);
+    expect(groups.length).toBe(1);
+    expect(groups[0].name).toBe("frame");
+    expect(groups[0].edges.length).toBe(12); // a cube's 12 feature edges
+    expect(groups[0].centroid).toHaveLength(3);
+    // unit cube centred at origin
+    for (const c of groups[0].centroid) expect(Math.abs(c)).toBeLessThan(1e-6);
   });
 });
 
