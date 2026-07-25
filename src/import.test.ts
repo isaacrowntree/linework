@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, type Mesh } from "./import";
 
 /** unit cube, 8 shared corners, 12 triangles — closed, all creases 90° */
 function cube(): Mesh {
@@ -177,6 +177,34 @@ describe("explode (L2 — separate parts along centroid vectors)", () => {
     // parts differ only in x; exploding along Y should not move them in x
     const [l] = explode([left(), right()], 1, { axis: [0, 1, 0] });
     expect(cx(l)).toBeCloseTo(-3);
+  });
+});
+
+describe("simplifyEdges (L4 — clean line-art from over-tessellated meshes)", () => {
+  const E = (a: number[], b: number[]): [any, any] => [a, b];
+
+  it("merges a chain of collinear segments into one edge", () => {
+    const chain = [E([0, 0, 0], [1, 0, 0]), E([1, 0, 0], [2, 0, 0]), E([2, 0, 0], [3, 0, 0])];
+    const out = simplifyEdges(chain as any);
+    expect(out.length).toBe(1);
+    const [a, b] = out[0];
+    expect([a[0], b[0]].sort((x, y) => x - y)).toEqual([0, 3]); // spans the full length
+  });
+
+  it("keeps a right-angle corner (not collinear)", () => {
+    const corner = [E([0, 0, 0], [1, 0, 0]), E([1, 0, 0], [1, 1, 0])];
+    expect(simplifyEdges(corner as any).length).toBe(2);
+  });
+
+  it("drops sub-minLen segments", () => {
+    const edges = [E([0, 0, 0], [5, 0, 0]), E([0, 0, 0], [0.01, 0, 0])];
+    expect(simplifyEdges(edges as any, { minLen: 0.1 }).length).toBe(1);
+  });
+
+  it("a subdivided straight rail collapses to ~1 edge, a cube keeps its 12", () => {
+    const rail = Array.from({ length: 8 }, (_, i) => E([i, 0, 0], [i + 1, 0, 0]));
+    expect(simplifyEdges(rail as any).length).toBe(1);
+    expect(simplifyEdges(featureEdges(cube())).length).toBe(12);
   });
 });
 

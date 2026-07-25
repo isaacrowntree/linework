@@ -363,6 +363,9 @@ export interface ImportOptions extends EdgeOptions {
   /** tag each emitted Shape with its source mesh `name` as `part` — so the
    *  consumer can annotate, explode, swap or depth-sort per part (L1). */
   grouped?: boolean;
+  /** simplify each part's edges (merge collinear chains, drop tiny segments)
+   *  before emitting — cleaner line-art from over-tessellated meshes (L4). */
+  simplify?: { minLen?: number; collinearDeg?: number; weld?: number };
 }
 
 /**
@@ -381,7 +384,9 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
   const edges: { e: [V3, V3]; part?: string }[] = [];
   for (const m of meshes) {
     const part = opts.grouped ? m.name : undefined;
-    for (const e of featureEdges(m, opts)) edges.push({ e, part });
+    let es = featureEdges(m, opts);
+    if (opts.simplify) es = simplifyEdges(es, opts.simplify); // per-part: never merge across parts
+    for (const e of es) edges.push({ e, part });
   }
 
   // fit transform (uniform scale about the model center → screen box), global
@@ -433,6 +438,52 @@ export function meshGroups(meshes: Mesh[], opts: EdgeOptions = {}): MeshGroup[] 
     edges: featureEdges(m, opts),
     centroid: centroid(m),
   }));
+}
+
+/**
+ * Simplify a feature-edge set (L4): drop sub-`minLen` segments and merge chains
+ * of near-collinear edges (meeting at a degree-2 vertex, directions within
+ * `collinearDeg`) into single edges. Real meshes over-tessellate straight rails
+ * into many segments; this recovers the clean lines a draftsperson would draw.
+ * Pure. Order-independent within tolerance.
+ */
+export function simplifyEdges(edges: [V3, V3][], opts: { minLen?: number; collinearDeg?: number; weld?: number } = {}): [V3, V3][] {
+  const minLen = opts.minLen ?? 0;
+  const cosT = Math.cos((opts.collinearDeg ?? 5) * Math.PI / 180);
+  const q = opts.weld ?? 1e-4;
+  const key = (v: V3) => `${Math.round(v[0] / q)},${Math.round(v[1] / q)},${Math.round(v[2] / q)}`;
+  const len = (a: V3, b: V3) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+  const unit = (a: V3, b: V3): V3 => { const d = len(a, b) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]; };
+
+  let list: [V3, V3][] = edges.filter(([a, b]) => len(a, b) > 1e-9).map(([a, b]) => [[...a], [...b]] as [V3, V3]);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const inc = new Map<string, number[]>();
+    list.forEach((e, i) => { for (const v of e) { const k = key(v); (inc.get(k) ?? inc.set(k, []).get(k)!).push(i); } });
+    for (const [, idxs] of inc) {
+      const uniq = [...new Set(idxs)];
+      if (uniq.length !== 2) continue; // only merge at a clean degree-2 joint
+      const [i, j] = uniq;
+      const ei = list[i], ej = list[j];
+      // the shared vertex sv; the two far ends
+      const sameKey = (a: V3, b: V3) => key(a) === key(b);
+      const svi = sameKey(ei[0], ej[0]) || sameKey(ei[0], ej[1]) ? ei[0] : ei[1];
+      const fi: V3 = sameKey(ei[0], svi) ? ei[1] : ei[0];
+      const fj: V3 = sameKey(ej[0], svi) ? ej[1] : ej[0];
+      // collinear straight-through: directions sv→fi and sv→fj point opposite
+      const di = unit(svi, fi), dj = unit(svi, fj);
+      const dot = di[0] * dj[0] + di[1] * dj[1] + di[2] * dj[2];
+      if (dot > -cosT) continue; // not a straight pass-through
+      // merge: replace both with one edge fi→fj
+      list = list.filter((_, k) => k !== i && k !== j);
+      list.push([fi, fj]);
+      changed = true;
+      break;
+    }
+  }
+  return list.filter(([a, b]) => len(a, b) >= minLen);
 }
 
 /**
