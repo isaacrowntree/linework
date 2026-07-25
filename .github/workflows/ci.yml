@@ -24,3 +24,32 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+  # dist/ and docs/ are committed build artifacts — GitHub Pages serves master:/docs
+  # directly, so a stale docs/ ships a stale demo. Rebuild and commit on every push to
+  # master so the artifacts can't drift from src/ again.
+  sync-artifacts:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Commit rebuilt artifacts if they drifted
+        run: |
+          if git diff --quiet -- dist docs; then
+            echo "artifacts already in sync"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dist docs
+          git commit -m "ci: rebuild dist/ and docs/ from src"
+          git push

@@ -287,7 +287,9 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
   </div>
 </footer>
 
-<script type="module">
+<!-- data-cfasync="false" opts this out of Cloudflare Rocket Loader, which rewrites
+     type="module" and re-executes the script itself, breaking ES module linking. -->
+<script type="module" data-cfasync="false">
   import { xform, render } from "./linework.js";
   import { line3 } from "./helpers.js";
   import { orbit } from "./orbit.js";

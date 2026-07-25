@@ -317,7 +317,7 @@ describe("explode (L2 — separate parts along centroid vectors)", () => {
   const shift = (dx: number, name: string): Mesh => ({ name, indices: cube().indices, positions: cube().positions.map((v, i) => (i % 3 === 0 ? v + dx : v)) as any });
   const left = () => shift(-3, "left");
   const right = () => shift(3, "right");
-  const cx = (m: Mesh) => { let s = 0, n = m.positions.length / 3; for (let j = 0; j < m.positions.length; j += 3) s += m.positions[j]; return s / n; };
+  const cx = (m: Mesh) => { const n = m.positions.length / 3; let s = 0; for (let j = 0; j < m.positions.length; j += 3) s += m.positions[j]; return s / n; };
 
   it("factor 0 leaves parts untouched", () => {
     const [l, r] = explode([left(), right()], 0);

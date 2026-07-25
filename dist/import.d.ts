@@ -16,7 +16,7 @@
  *
  * Zero dependencies. GLB, OBJ and STL are parsed by hand; no Draco.
  */
-import type { Shape, V3 } from "./linework.js";
+import type { Shape, V3, Cmd } from "./linework.js";
 export interface Mesh {
     /** flat [x,y,z, x,y,z, …] in world space (node transforms applied) */
     positions: Float32Array;
@@ -101,9 +101,126 @@ export interface ImportOptions extends EdgeOptions {
     };
     /** flip Y (glTF is Y-up; screen space is Y-down). Default true. */
     flipY?: boolean;
+    /** tag each emitted Shape with its source mesh `name` as `part` — so the
+     *  consumer can annotate, explode, swap or depth-sort per part (L1). */
+    grouped?: boolean;
+    /** simplify each part's edges (merge collinear chains, drop tiny segments)
+     *  before emitting — cleaner line-art from over-tessellated meshes (L4). */
+    simplify?: {
+        minLen?: number;
+        collinearDeg?: number;
+        weld?: number;
+    };
+    /** chain edges + round them into smooth Bézier curves (L7) — makes a faceted
+     *  low-poly wheel/rim draw as a real circle instead of a polygon. `true` traces
+     *  smooth curves through crossings (drivetrain); pass an object to tune. */
+    smooth?: boolean | {
+        throughJunctions?: number;
+    };
 }
 /**
  * One-call convenience: meshes → feature edges → linework Shapes, fitted
  * to a screen box. Feed the result straight to render()/sketch.
+ *
+ * With `grouped: true`, each shape carries `part` = its source mesh name, so a
+ * multi-mesh model (a bike: frame / wheels / drivetrain) keeps per-part identity
+ * for annotation, exploded views, and per-object depth sorting. Parts share one
+ * global fit transform, so their relative positions are preserved.
  */
 export declare function meshToShapes(meshes: Mesh[], opts?: ImportOptions): Shape[];
+/**
+ * Build a capped cylinder mesh between two points (authoring primitive). A bike
+ * frame is tubes between geometry points, so this is the unit for generating a
+ * real, low-poly, own-it 3D frame that flows through the whole pipeline — the
+ * tube's circular cross-section makes it read as a solid tube under rotation,
+ * and L7/L8 keep the ends round. `segments` sets the tube's facet count.
+ */
+export declare function cylinderMesh(a: V3, b: V3, radius: number, segments?: number): Mesh;
+/**
+ * Vertex-cluster decimation (L9) — snap vertices to a grid and merge, so a
+ * high-poly (or scanned) model collapses to a low-poly one BEFORE edge
+ * extraction: fast, and it yields the clean line art of a low-poly asset from
+ * any source. O(n). `grid` is the number of cells across the longest axis
+ * (higher = more detail retained). Degenerate triangles are dropped.
+ */
+export declare function decimate(meshes: Mesh[], opts?: {
+    grid?: number;
+}): Mesh[];
+/**
+ * Auto-orient meshes to a canonical side profile (L5) via PCA: the longest
+ * principal axis becomes screen-X (bike length), the next screen-Y (height), and
+ * the thinnest becomes view depth Z — so an arbitrary downloaded model renders as
+ * a clean side view without hand-tuning. Pure; returns new meshes.
+ */
+export declare function orient(meshes: Mesh[]): Mesh[];
+export interface MeshGroup {
+    name: string;
+    /** this part's feature edges, in model coordinates (unfitted) */
+    edges: [V3, V3][];
+    /** part centroid (mean vertex), for explode offsets + callout anchors */
+    centroid: V3;
+}
+/**
+ * Per-part geometry for annotation/explode: each mesh's feature edges plus its
+ * centroid (mean vertex). Unnamed meshes get a positional fallback name.
+ */
+export declare function meshGroups(meshes: Mesh[], opts?: EdgeOptions): MeshGroup[];
+/**
+ * Simplify a feature-edge set (L4): drop sub-`minLen` segments and merge chains
+ * of near-collinear edges (meeting at a degree-2 vertex, directions within
+ * `collinearDeg`) into single edges. Real meshes over-tessellate straight rails
+ * into many segments; this recovers the clean lines a draftsperson would draw.
+ * Pure. Order-independent within tolerance.
+ */
+export declare function simplifyEdges(edges: [V3, V3][], opts?: {
+    minLen?: number;
+    collinearDeg?: number;
+    weld?: number;
+}): [V3, V3][];
+export interface Chain {
+    points: V3[];
+    closed: boolean;
+}
+/**
+ * Connect an edge set into polylines/loops (L7). Walks degree-2 runs and breaks
+ * at junctions (a vertex where 3+ edges meet) and endpoints — so a wheel rim
+ * comes out as ONE closed loop while a frame's tubes stay separate chains. The
+ * chains are what `smoothPath` rounds into real curves.
+ */
+export declare function chainEdges(edges: [V3, V3][], opts?: {
+    weld?: number;
+    throughJunctions?: number;
+}): Chain[];
+export interface FittedCircle {
+    center: V3;
+    radius: number;
+    u: V3;
+    v: V3;
+}
+/**
+ * Fit a circle to a closed point loop (L8) — a wheel / chainring / rotor / cog is
+ * radially symmetric, so a TRUE circle at its real centre + radius is both
+ * perfectly round and more accurate than any low-poly polygon. Returns null when
+ * the loop isn't a circle (too few sides, non-uniform radius, or non-planar), so
+ * frame parts are never mistaken for wheels.
+ */
+export declare function fitCircle(points: V3[]): FittedCircle | null;
+/** Resample a fitted circle into `segments` even points on it (in its plane). */
+export declare function circlePoints(c: FittedCircle, segments?: number): V3[];
+/**
+ * Turn a chain of points into a SMOOTH path (L7) via midpoint quadratic Béziers
+ * — a faceted 12-gon wheel becomes a round curve. Straight and 2-point chains
+ * stay straight. Closed chains emit M…Q…Z.
+ */
+export declare function smoothPath(points: V3[], closed: boolean): Cmd[];
+/**
+ * Exploded view (L2): push each part outward from the assembly centre by
+ * `factor` (0 = assembled, 1 = one part-radius out). Optionally constrain the
+ * offset to an axis (e.g. explode a drivetrain along the wheel axle). Pure —
+ * returns new meshes, never mutates the input. Explode BEFORE edge extraction so
+ * each part's edges come out in its exploded position.
+ */
+export declare function explode(meshes: Mesh[], factor: number, opts?: {
+    center?: V3;
+    axis?: V3;
+}): Mesh[];

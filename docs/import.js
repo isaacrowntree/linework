@@ -311,23 +311,41 @@ export function featureEdges(mesh, opts = {}) {
 /**
  * One-call convenience: meshes → feature edges → linework Shapes, fitted
  * to a screen box. Feed the result straight to render()/sketch.
+ *
+ * With `grouped: true`, each shape carries `part` = its source mesh name, so a
+ * multi-mesh model (a bike: frame / wheels / drivetrain) keeps per-part identity
+ * for annotation, exploded views, and per-object depth sorting. Parts share one
+ * global fit transform, so their relative positions are preserved.
  */
 export function meshToShapes(meshes, opts = {}) {
     const cls = opts.cls ?? "ink";
     const flipY = opts.flipY ?? true;
-    const allEdges = [];
-    for (const m of meshes)
-        allEdges.push(...featureEdges(m, opts));
-    // fit transform (uniform scale about the model center → screen box)
+    const edges = []; // straight-line path (default)
+    const chains = []; // smoothed path (opts.smooth)
+    for (const m of meshes) {
+        const part = opts.grouped ? m.name : undefined;
+        let es = featureEdges(m, opts);
+        if (opts.simplify)
+            es = simplifyEdges(es, opts.simplify); // per-part: never merge across parts
+        if (opts.smooth) {
+            const tj = typeof opts.smooth === "object" ? opts.smooth.throughJunctions ?? 30 : 30;
+            for (const ch of chainEdges(es, { throughJunctions: tj }))
+                chains.push({ ...ch, part });
+        }
+        else
+            for (const e of es)
+                edges.push({ e, part });
+    }
+    // fit transform (uniform scale about the model center → screen box), global
+    const pts = opts.smooth ? chains.flatMap((c) => c.points) : edges.flatMap((r) => r.e);
     let map = (v) => v;
     if (opts.fit) {
         const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-        for (const [a, b] of allEdges)
-            for (const v of [a, b])
-                for (let k = 0; k < 3; k++) {
-                    min[k] = Math.min(min[k], v[k]);
-                    max[k] = Math.max(max[k], v[k]);
-                }
+        for (const v of pts)
+            for (let k = 0; k < 3; k++) {
+                min[k] = Math.min(min[k], v[k]);
+                max[k] = Math.max(max[k], v[k]);
+            }
         const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
         const s = opts.fit.size / span;
         const c = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
@@ -337,10 +355,482 @@ export function meshToShapes(meshes, opts = {}) {
     else if (flipY) {
         map = (v) => [v[0], -v[1], v[2]];
     }
-    return allEdges.map(([a, b]) => ({
-        t: "path",
-        d: [["M", map(a)], ["L", map(b)]],
-        strokes: [{ cls }],
+    if (opts.smooth) {
+        return chains.map((c) => {
+            // a closed loop that IS a circle (wheel/chainring/rotor) → resample to a
+            // true circle at its real centre+radius, so it's perfectly round (L8).
+            const circ = c.closed ? fitCircle(c.points) : null;
+            const pts = circ ? circlePoints(circ, 48) : c.points;
+            const sh = { t: "path", d: smoothPath(pts.map(map), c.closed), strokes: [{ cls }] };
+            if (c.part)
+                sh.part = c.part;
+            return sh;
+        });
+    }
+    return edges.map(({ e: [a, b], part }) => {
+        const sh = { t: "path", d: [["M", map(a)], ["L", map(b)]], strokes: [{ cls }] };
+        if (part)
+            sh.part = part;
+        return sh;
+    });
+}
+/**
+ * Build a capped cylinder mesh between two points (authoring primitive). A bike
+ * frame is tubes between geometry points, so this is the unit for generating a
+ * real, low-poly, own-it 3D frame that flows through the whole pipeline — the
+ * tube's circular cross-section makes it read as a solid tube under rotation,
+ * and L7/L8 keep the ends round. `segments` sets the tube's facet count.
+ */
+export function cylinderMesh(a, b, radius, segments = 8) {
+    const ax = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const len = Math.hypot(ax[0], ax[1], ax[2]) || 1;
+    const axis = [ax[0] / len, ax[1] / len, ax[2] / len];
+    const ref = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+    const u = norm3(cross3(axis, ref));
+    const v = cross3(axis, u);
+    const pos = [];
+    for (const c of [a, b])
+        for (let i = 0; i < segments; i++) {
+            const t = (i / segments) * 2 * Math.PI, cu = Math.cos(t) * radius, sv = Math.sin(t) * radius;
+            pos.push(c[0] + cu * u[0] + sv * v[0], c[1] + cu * u[1] + sv * v[1], c[2] + cu * u[2] + sv * v[2]);
+        }
+    const capA = pos.length / 3;
+    pos.push(a[0], a[1], a[2]);
+    const capB = pos.length / 3;
+    pos.push(b[0], b[1], b[2]);
+    const idx = [];
+    for (let i = 0; i < segments; i++) {
+        const i1 = (i + 1) % segments, aI = i, aI1 = i1, bI = segments + i, bI1 = segments + i1;
+        idx.push(aI, bI, bI1, aI, bI1, aI1); // side quad
+        idx.push(capA, aI1, aI); // cap A fan
+        idx.push(capB, bI, bI1); // cap B fan
+    }
+    return { positions: new Float32Array(pos), indices: new Uint32Array(idx) };
+}
+/**
+ * Vertex-cluster decimation (L9) — snap vertices to a grid and merge, so a
+ * high-poly (or scanned) model collapses to a low-poly one BEFORE edge
+ * extraction: fast, and it yields the clean line art of a low-poly asset from
+ * any source. O(n). `grid` is the number of cells across the longest axis
+ * (higher = more detail retained). Degenerate triangles are dropped.
+ */
+export function decimate(meshes, opts = {}) {
+    const grid = opts.grid ?? 48;
+    return meshes.map((m) => {
+        const p = m.positions;
+        let minx = Infinity, miny = Infinity, minz = Infinity, maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
+        for (let i = 0; i < p.length; i += 3) {
+            minx = Math.min(minx, p[i]);
+            miny = Math.min(miny, p[i + 1]);
+            minz = Math.min(minz, p[i + 2]);
+            maxx = Math.max(maxx, p[i]);
+            maxy = Math.max(maxy, p[i + 1]);
+            maxz = Math.max(maxz, p[i + 2]);
+        }
+        const cell = (Math.max(maxx - minx, maxy - miny, maxz - minz) || 1) / grid;
+        const cells = new Map();
+        const newPos = [];
+        const vmap = new Int32Array(p.length / 3);
+        for (let i = 0; i < p.length; i += 3) {
+            const k = `${Math.round((p[i] - minx) / cell)},${Math.round((p[i + 1] - miny) / cell)},${Math.round((p[i + 2] - minz) / cell)}`;
+            let c = cells.get(k);
+            if (!c) {
+                c = { idx: newPos.length / 3, sx: 0, sy: 0, sz: 0, n: 0 };
+                cells.set(k, c);
+                newPos.push(0, 0, 0);
+            }
+            c.sx += p[i];
+            c.sy += p[i + 1];
+            c.sz += p[i + 2];
+            c.n++;
+            vmap[i / 3] = c.idx;
+        }
+        for (const c of cells.values()) {
+            newPos[c.idx * 3] = c.sx / c.n;
+            newPos[c.idx * 3 + 1] = c.sy / c.n;
+            newPos[c.idx * 3 + 2] = c.sz / c.n;
+        }
+        const idx = m.indices, out = [];
+        for (let i = 0; i < idx.length; i += 3) {
+            const a = vmap[idx[i]], b = vmap[idx[i + 1]], cc = vmap[idx[i + 2]];
+            if (a !== b && b !== cc && a !== cc)
+                out.push(a, b, cc); // drop collapsed (degenerate) triangles
+        }
+        return { ...m, positions: new Float32Array(newPos), indices: new Uint32Array(out) };
+    });
+}
+/** Eigen-decomposition of a symmetric 3×3 (cyclic Jacobi). Columns of `vectors`
+ *  are the eigenvectors; sign is arbitrary (fine for orientation). */
+function jacobiEigen3(a) {
+    const A = a.map((r) => r.slice());
+    const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+    for (let sweep = 0; sweep < 60; sweep++) {
+        // largest off-diagonal
+        let p = 0, q = 1;
+        if (Math.abs(A[0][2]) > Math.abs(A[p][q])) {
+            p = 0;
+            q = 2;
+        }
+        if (Math.abs(A[1][2]) > Math.abs(A[p][q])) {
+            p = 1;
+            q = 2;
+        }
+        const apq = A[p][q];
+        if (Math.abs(apq) < 1e-14)
+            break;
+        const theta = 0.5 * Math.atan2(2 * apq, A[p][p] - A[q][q]);
+        const c = Math.cos(theta), s = Math.sin(theta);
+        for (let k = 0; k < 3; k++) {
+            const kp = A[k][p], kq = A[k][q];
+            A[k][p] = c * kp + s * kq;
+            A[k][q] = -s * kp + c * kq;
+        }
+        for (let k = 0; k < 3; k++) {
+            const pk = A[p][k], qk = A[q][k];
+            A[p][k] = c * pk + s * qk;
+            A[q][k] = -s * pk + c * qk;
+        }
+        for (let k = 0; k < 3; k++) {
+            const kp = V[k][p], kq = V[k][q];
+            V[k][p] = c * kp + s * kq;
+            V[k][q] = -s * kp + c * kq;
+        }
+    }
+    return { vectors: V, values: [A[0][0], A[1][1], A[2][2]] };
+}
+/**
+ * Auto-orient meshes to a canonical side profile (L5) via PCA: the longest
+ * principal axis becomes screen-X (bike length), the next screen-Y (height), and
+ * the thinnest becomes view depth Z — so an arbitrary downloaded model renders as
+ * a clean side view without hand-tuning. Pure; returns new meshes.
+ */
+export function orient(meshes) {
+    let cx = 0, cy = 0, cz = 0, N = 0;
+    for (const m of meshes) {
+        const p = m.positions;
+        for (let i = 0; i < p.length; i += 3) {
+            cx += p[i];
+            cy += p[i + 1];
+            cz += p[i + 2];
+            N++;
+        }
+    }
+    if (!N)
+        return meshes;
+    cx /= N;
+    cy /= N;
+    cz /= N;
+    let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+    for (const m of meshes) {
+        const p = m.positions;
+        for (let i = 0; i < p.length; i += 3) {
+            const dx = p[i] - cx, dy = p[i + 1] - cy, dz = p[i + 2] - cz;
+            xx += dx * dx;
+            xy += dx * dy;
+            xz += dx * dz;
+            yy += dy * dy;
+            yz += dy * dz;
+            zz += dz * dz;
+        }
+    }
+    const { vectors: V, values } = jacobiEigen3([[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]]);
+    const order = [0, 1, 2].sort((a, b) => values[b] - values[a]); // longest variance first
+    const ax = (j) => [V[0][j], V[1][j], V[2][j]];
+    const ex = ax(order[0]), ey = ax(order[1]), ez = ax(order[2]);
+    return meshes.map((m) => {
+        const p = m.positions, out = new Float32Array(p.length);
+        for (let i = 0; i < p.length; i += 3) {
+            const dx = p[i] - cx, dy = p[i + 1] - cy, dz = p[i + 2] - cz;
+            out[i] = dx * ex[0] + dy * ex[1] + dz * ex[2] + cx;
+            out[i + 1] = dx * ey[0] + dy * ey[1] + dz * ey[2] + cy;
+            out[i + 2] = dx * ez[0] + dy * ez[1] + dz * ez[2] + cz;
+        }
+        return { ...m, positions: out };
+    });
+}
+/** Mean vertex of a mesh — the part's centroid. */
+function centroid(m) {
+    const p = m.positions, n = p.length / 3 || 1;
+    let cx = 0, cy = 0, cz = 0;
+    for (let j = 0; j < p.length; j += 3) {
+        cx += p[j];
+        cy += p[j + 1];
+        cz += p[j + 2];
+    }
+    return [cx / n, cy / n, cz / n];
+}
+/**
+ * Per-part geometry for annotation/explode: each mesh's feature edges plus its
+ * centroid (mean vertex). Unnamed meshes get a positional fallback name.
+ */
+export function meshGroups(meshes, opts = {}) {
+    return meshes.map((m, i) => ({
+        name: m.name ?? `part-${i}`,
+        edges: featureEdges(m, opts),
+        centroid: centroid(m),
     }));
+}
+/**
+ * Simplify a feature-edge set (L4): drop sub-`minLen` segments and merge chains
+ * of near-collinear edges (meeting at a degree-2 vertex, directions within
+ * `collinearDeg`) into single edges. Real meshes over-tessellate straight rails
+ * into many segments; this recovers the clean lines a draftsperson would draw.
+ * Pure. Order-independent within tolerance.
+ */
+export function simplifyEdges(edges, opts = {}) {
+    const minLen = opts.minLen ?? 0;
+    const cosT = Math.cos((opts.collinearDeg ?? 5) * Math.PI / 180);
+    const q = opts.weld ?? 1e-4;
+    const key = (v) => `${Math.round(v[0] / q)},${Math.round(v[1] / q)},${Math.round(v[2] / q)}`;
+    const len = (a, b) => Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
+    const unit = (a, b) => { const d = len(a, b) || 1; return [(b[0] - a[0]) / d, (b[1] - a[1]) / d, (b[2] - a[2]) / d]; };
+    let list = edges.filter(([a, b]) => len(a, b) > 1e-9).map(([a, b]) => [[...a], [...b]]);
+    let changed = true;
+    while (changed) {
+        changed = false;
+        const inc = new Map();
+        list.forEach((e, i) => { for (const v of e) {
+            const k = key(v);
+            (inc.get(k) ?? inc.set(k, []).get(k)).push(i);
+        } });
+        for (const [, idxs] of inc) {
+            const uniq = [...new Set(idxs)];
+            if (uniq.length !== 2)
+                continue; // only merge at a clean degree-2 joint
+            const [i, j] = uniq;
+            const ei = list[i], ej = list[j];
+            // the shared vertex sv; the two far ends
+            const sameKey = (a, b) => key(a) === key(b);
+            const svi = sameKey(ei[0], ej[0]) || sameKey(ei[0], ej[1]) ? ei[0] : ei[1];
+            const fi = sameKey(ei[0], svi) ? ei[1] : ei[0];
+            const fj = sameKey(ej[0], svi) ? ej[1] : ej[0];
+            // collinear straight-through: directions sv→fi and sv→fj point opposite
+            const di = unit(svi, fi), dj = unit(svi, fj);
+            const dot = di[0] * dj[0] + di[1] * dj[1] + di[2] * dj[2];
+            if (dot > -cosT)
+                continue; // not a straight pass-through
+            // merge: replace both with one edge fi→fj
+            list = list.filter((_, k) => k !== i && k !== j);
+            list.push([fi, fj]);
+            changed = true;
+            break;
+        }
+    }
+    return list.filter(([a, b]) => len(a, b) >= minLen);
+}
+/**
+ * Connect an edge set into polylines/loops (L7). Walks degree-2 runs and breaks
+ * at junctions (a vertex where 3+ edges meet) and endpoints — so a wheel rim
+ * comes out as ONE closed loop while a frame's tubes stay separate chains. The
+ * chains are what `smoothPath` rounds into real curves.
+ */
+export function chainEdges(edges, opts = {}) {
+    const q = opts.weld ?? 1e-4;
+    const key = (v) => `${Math.round(v[0] / q)},${Math.round(v[1] / q)},${Math.round(v[2] / q)}`;
+    const nodes = new Map();
+    const get = (v) => {
+        const k = key(v);
+        let n = nodes.get(k);
+        if (!n) {
+            n = { pt: v, nbrs: new Set() };
+            nodes.set(k, n);
+        }
+        return [k, n];
+    };
+    for (const [a, b] of edges) {
+        const [ka, na] = get(a), [kb, nb] = get(b);
+        if (ka === kb)
+            continue;
+        na.nbrs.add(kb);
+        nb.nbrs.add(ka);
+    }
+    const ekey = (a, b) => (a < b ? a + "|" + b : b + "|" + a);
+    const unit = (a, b) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
+    const cosMax = opts.throughJunctions !== undefined ? Math.cos(opts.throughJunctions * Math.PI / 180) : null;
+    const used = new Set();
+    const chains = [];
+    const startFrom = (k0) => {
+        const n0 = nodes.get(k0);
+        for (const first of [...n0.nbrs]) {
+            if (used.has(ekey(k0, first)))
+                continue;
+            used.add(ekey(k0, first));
+            const points = [n0.pt, nodes.get(first).pt];
+            let prev = k0, cur = first, closed = false;
+            for (;;) {
+                const node = nodes.get(cur);
+                const cand = [...node.nbrs].filter((x) => !used.has(ekey(cur, x)));
+                let next;
+                if (cosMax !== null) {
+                    // continue along the straightest available edge, if within the turn limit
+                    const inDir = unit(nodes.get(prev).pt, node.pt);
+                    let bestDot = -2;
+                    for (const x of cand) {
+                        const d = unit(node.pt, nodes.get(x).pt);
+                        const dot = inDir[0] * d[0] + inDir[1] * d[1] + inDir[2] * d[2];
+                        if (dot > bestDot) {
+                            bestDot = dot;
+                            next = x;
+                        }
+                    }
+                    if (next === undefined || bestDot < cosMax)
+                        break;
+                }
+                else {
+                    if (node.nbrs.size !== 2)
+                        break; // strict: stop at any junction
+                    next = cand.find((x) => x !== prev);
+                    if (next === undefined)
+                        break;
+                }
+                if (next === k0) {
+                    used.add(ekey(cur, next));
+                    closed = true;
+                    break;
+                }
+                used.add(ekey(cur, next));
+                points.push(nodes.get(next).pt);
+                prev = cur;
+                cur = next;
+            }
+            chains.push({ points, closed });
+        }
+    };
+    // endpoints first, then junctions, then pure loops — so a line flows through a
+    // crossing (started from its end) before the crossing spawns stubs.
+    const byDeg = (pred) => { for (const k of nodes.keys())
+        if (pred(nodes.get(k).nbrs.size))
+            startFrom(k); };
+    byDeg((n) => n === 1);
+    byDeg((n) => n >= 3);
+    byDeg((n) => n === 2);
+    return chains;
+}
+const mid3 = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const norm3 = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
+/**
+ * Fit a circle to a closed point loop (L8) — a wheel / chainring / rotor / cog is
+ * radially symmetric, so a TRUE circle at its real centre + radius is both
+ * perfectly round and more accurate than any low-poly polygon. Returns null when
+ * the loop isn't a circle (too few sides, non-uniform radius, or non-planar), so
+ * frame parts are never mistaken for wheels.
+ */
+export function fitCircle(points) {
+    const n = points.length;
+    if (n < 8)
+        return null; // a real circle-polygon has many sides; a square/hex corner does not
+    const center = [0, 0, 0];
+    for (const p of points) {
+        center[0] += p[0];
+        center[1] += p[1];
+        center[2] += p[2];
+    }
+    center[0] /= n;
+    center[1] /= n;
+    center[2] /= n;
+    // plane normal via Newell's method
+    let nx = 0, ny = 0, nz = 0;
+    for (let i = 0; i < n; i++) {
+        const a = points[i], b = points[(i + 1) % n];
+        nx += (a[1] - b[1]) * (a[2] + b[2]);
+        ny += (a[2] - b[2]) * (a[0] + b[0]);
+        nz += (a[0] - b[0]) * (a[1] + b[1]);
+    }
+    const normal = norm3([nx, ny, nz]);
+    const ref = Math.abs(normal[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+    const u = norm3(cross3(normal, ref));
+    const v = cross3(normal, u);
+    // radius uniformity + planarity
+    let rmean = 0;
+    const rs = [];
+    for (const p of points) {
+        const d = sub3(p, center);
+        const r = Math.hypot(dot3(d, u), dot3(d, v));
+        rs.push(r);
+        rmean += r;
+    }
+    rmean /= n;
+    if (rmean < 1e-6)
+        return null;
+    let rvar = 0, planar = 0;
+    for (let i = 0; i < n; i++) {
+        rvar += (rs[i] - rmean) ** 2;
+        planar = Math.max(planar, Math.abs(dot3(sub3(points[i], center), normal)));
+    }
+    if (Math.sqrt(rvar / n) / rmean > 0.12)
+        return null; // radius not uniform → not a circle
+    if (planar / rmean > 0.15)
+        return null; // not flat → not a wheel-plane circle
+    return { center, radius: rmean, u, v };
+}
+/** Resample a fitted circle into `segments` even points on it (in its plane). */
+export function circlePoints(c, segments = 48) {
+    return Array.from({ length: segments }, (_, i) => {
+        const t = (i / segments) * 2 * Math.PI, ct = Math.cos(t) * c.radius, st = Math.sin(t) * c.radius;
+        return [c.center[0] + ct * c.u[0] + st * c.v[0], c.center[1] + ct * c.u[1] + st * c.v[1], c.center[2] + ct * c.u[2] + st * c.v[2]];
+    });
+}
+/**
+ * Turn a chain of points into a SMOOTH path (L7) via midpoint quadratic Béziers
+ * — a faceted 12-gon wheel becomes a round curve. Straight and 2-point chains
+ * stay straight. Closed chains emit M…Q…Z.
+ */
+export function smoothPath(points, closed) {
+    const P = points, n = P.length;
+    if (n < 3)
+        return n === 2 ? [["M", P[0]], ["L", P[1]]] : [["M", P[0]]];
+    const cmds = [];
+    if (closed) {
+        cmds.push(["M", mid3(P[n - 1], P[0])]);
+        for (let i = 0; i < n; i++)
+            cmds.push(["Q", P[i], mid3(P[i], P[(i + 1) % n])]);
+        cmds.push(["Z"]);
+    }
+    else {
+        cmds.push(["M", P[0]], ["L", mid3(P[0], P[1])]);
+        for (let i = 1; i < n - 1; i++)
+            cmds.push(["Q", P[i], mid3(P[i], P[i + 1])]);
+        cmds.push(["L", P[n - 1]]);
+    }
+    return cmds;
+}
+/**
+ * Exploded view (L2): push each part outward from the assembly centre by
+ * `factor` (0 = assembled, 1 = one part-radius out). Optionally constrain the
+ * offset to an axis (e.g. explode a drivetrain along the wheel axle). Pure —
+ * returns new meshes, never mutates the input. Explode BEFORE edge extraction so
+ * each part's edges come out in its exploded position.
+ */
+export function explode(meshes, factor, opts = {}) {
+    const cents = meshes.map(centroid);
+    const center = opts.center ?? [
+        cents.reduce((s, c) => s + c[0], 0) / (cents.length || 1),
+        cents.reduce((s, c) => s + c[1], 0) / (cents.length || 1),
+        cents.reduce((s, c) => s + c[2], 0) / (cents.length || 1),
+    ];
+    let axis = null;
+    if (opts.axis) {
+        const [x, y, z] = opts.axis;
+        const len = Math.hypot(x, y, z) || 1;
+        axis = [x / len, y / len, z / len];
+    }
+    return meshes.map((m, i) => {
+        let dir = [cents[i][0] - center[0], cents[i][1] - center[1], cents[i][2] - center[2]];
+        if (axis) {
+            const d = dir[0] * axis[0] + dir[1] * axis[1] + dir[2] * axis[2];
+            dir = [axis[0] * d, axis[1] * d, axis[2] * d];
+        }
+        const ox = dir[0] * factor, oy = dir[1] * factor, oz = dir[2] * factor;
+        const positions = new Float32Array(m.positions.length);
+        for (let j = 0; j < m.positions.length; j += 3) {
+            positions[j] = m.positions[j] + ox;
+            positions[j + 1] = m.positions[j + 1] + oy;
+            positions[j + 2] = m.positions[j + 2] + oz;
+        }
+        return { ...m, positions };
+    });
 }
 //# sourceMappingURL=import.js.map
