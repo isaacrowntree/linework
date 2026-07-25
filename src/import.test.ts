@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, type Mesh } from "./import";
 
 /** unit cube, 8 shared corners, 12 triangles — closed, all creases 90° */
 function cube(): Mesh {
@@ -145,6 +145,38 @@ describe("grouped import (L1 — per-part identity for annotation/explode/swap)"
     expect(groups[0].centroid).toHaveLength(3);
     // unit cube centred at origin
     for (const c of groups[0].centroid) expect(Math.abs(c)).toBeLessThan(1e-6);
+  });
+});
+
+describe("explode (L2 — separate parts along centroid vectors)", () => {
+  // two unit cubes offset left (-3) and right (+3) of the origin
+  const shift = (dx: number, name: string): Mesh => ({ name, indices: cube().indices, positions: cube().positions.map((v, i) => (i % 3 === 0 ? v + dx : v)) as any });
+  const left = () => shift(-3, "left");
+  const right = () => shift(3, "right");
+  const cx = (m: Mesh) => { let s = 0, n = m.positions.length / 3; for (let j = 0; j < m.positions.length; j += 3) s += m.positions[j]; return s / n; };
+
+  it("factor 0 leaves parts untouched", () => {
+    const [l, r] = explode([left(), right()], 0);
+    expect(cx(l)).toBeCloseTo(-3);
+    expect(cx(r)).toBeCloseTo(3);
+  });
+
+  it("factor > 0 pushes each part outward from the assembly centre", () => {
+    const [l, r] = explode([left(), right()], 1);
+    expect(cx(l)).toBeLessThan(-3); // left moves further left
+    expect(cx(r)).toBeGreaterThan(3); // right moves further right
+  });
+
+  it("does not mutate the input meshes", () => {
+    const orig = left();
+    explode([orig, right()], 1);
+    expect(cx(orig)).toBeCloseTo(-3);
+  });
+
+  it("an explicit axis constrains the offset to that axis", () => {
+    // parts differ only in x; exploding along Y should not move them in x
+    const [l] = explode([left(), right()], 1, { axis: [0, 1, 0] });
+    expect(cx(l)).toBeCloseTo(-3);
   });
 });
 

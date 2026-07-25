@@ -407,6 +407,14 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
   });
 }
 
+/** Mean vertex of a mesh — the part's centroid. */
+function centroid(m: Mesh): V3 {
+  const p = m.positions, n = p.length / 3 || 1;
+  let cx = 0, cy = 0, cz = 0;
+  for (let j = 0; j < p.length; j += 3) { cx += p[j]; cy += p[j + 1]; cz += p[j + 2]; }
+  return [cx / n, cy / n, cz / n];
+}
+
 export interface MeshGroup {
   name: string;
   /** this part's feature edges, in model coordinates (unfitted) */
@@ -420,15 +428,46 @@ export interface MeshGroup {
  * centroid (mean vertex). Unnamed meshes get a positional fallback name.
  */
 export function meshGroups(meshes: Mesh[], opts: EdgeOptions = {}): MeshGroup[] {
+  return meshes.map((m, i) => ({
+    name: m.name ?? `part-${i}`,
+    edges: featureEdges(m, opts),
+    centroid: centroid(m),
+  }));
+}
+
+/**
+ * Exploded view (L2): push each part outward from the assembly centre by
+ * `factor` (0 = assembled, 1 = one part-radius out). Optionally constrain the
+ * offset to an axis (e.g. explode a drivetrain along the wheel axle). Pure —
+ * returns new meshes, never mutates the input. Explode BEFORE edge extraction so
+ * each part's edges come out in its exploded position.
+ */
+export function explode(meshes: Mesh[], factor: number, opts: { center?: V3; axis?: V3 } = {}): Mesh[] {
+  const cents = meshes.map(centroid);
+  const center = opts.center ?? [
+    cents.reduce((s, c) => s + c[0], 0) / (cents.length || 1),
+    cents.reduce((s, c) => s + c[1], 0) / (cents.length || 1),
+    cents.reduce((s, c) => s + c[2], 0) / (cents.length || 1),
+  ];
+  let axis: V3 | null = null;
+  if (opts.axis) {
+    const [x, y, z] = opts.axis;
+    const len = Math.hypot(x, y, z) || 1;
+    axis = [x / len, y / len, z / len];
+  }
   return meshes.map((m, i) => {
-    const p = m.positions;
-    let cx = 0, cy = 0, cz = 0;
-    const n = p.length / 3 || 1;
-    for (let j = 0; j < p.length; j += 3) { cx += p[j]; cy += p[j + 1]; cz += p[j + 2]; }
-    return {
-      name: m.name ?? `part-${i}`,
-      edges: featureEdges(m, opts),
-      centroid: [cx / n, cy / n, cz / n] as V3,
-    };
+    let dir: V3 = [cents[i][0] - center[0], cents[i][1] - center[1], cents[i][2] - center[2]];
+    if (axis) {
+      const d = dir[0] * axis[0] + dir[1] * axis[1] + dir[2] * axis[2];
+      dir = [axis[0] * d, axis[1] * d, axis[2] * d];
+    }
+    const ox = dir[0] * factor, oy = dir[1] * factor, oz = dir[2] * factor;
+    const positions = new Float32Array(m.positions.length);
+    for (let j = 0; j < m.positions.length; j += 3) {
+      positions[j] = m.positions[j] + ox;
+      positions[j + 1] = m.positions[j + 1] + oy;
+      positions[j + 2] = m.positions[j + 2] + oz;
+    }
+    return { ...m, positions };
   });
 }
