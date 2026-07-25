@@ -1,5 +1,57 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, type Mesh } from "./import";
+
+describe("chainEdges + smoothPath (L7 — round faceted curves)", () => {
+  const ring = (n: number, r = 1): [any, any][] => {
+    const pts = Array.from({ length: n }, (_, i) => [Math.cos((i / n) * 2 * Math.PI) * r, Math.sin((i / n) * 2 * Math.PI) * r, 0]);
+    return pts.map((p, i) => [p, pts[(i + 1) % n]]);
+  };
+
+  it("chains a closed polygon loop (a wheel) into one closed chain", () => {
+    const chains = chainEdges(ring(12));
+    expect(chains.length).toBe(1);
+    expect(chains[0].closed).toBe(true);
+    expect(chains[0].points.length).toBe(12);
+  });
+
+  it("breaks chains at junctions (degree ≠ 2), so a frame's tubes stay separate", () => {
+    // a Y: three edges meeting at the origin (degree-3 junction)
+    const O: any = [0, 0, 0];
+    const edges: [any, any][] = [[O, [1, 0, 0]], [O, [-1, 1, 0]], [O, [-1, -1, 0]]];
+    const chains = chainEdges(edges);
+    expect(chains.length).toBe(3); // one per arm, split at the junction
+    expect(chains.every((c) => !c.closed)).toBe(true);
+  });
+
+  it("smoothPath emits quadratic Béziers through a curved chain", () => {
+    const cmds = smoothPath([[0, 0, 0], [1, 1, 0], [2, 0, 0]], false);
+    expect(cmds.some((c) => c[0] === "Q")).toBe(true);
+    expect(cmds[0][0]).toBe("M");
+  });
+
+  it("a closed chain smooths to a closed path (M…Q…Z)", () => {
+    const cmds = smoothPath(chainEdges(ring(6))[0].points, true);
+    expect(cmds[0][0]).toBe("M");
+    expect(cmds.some((c) => c[0] === "Q")).toBe(true);
+    expect(cmds[cmds.length - 1][0]).toBe("Z");
+  });
+
+  it("meshToShapes({smooth}) rounds a wheel loop into ONE curved path", () => {
+    const wheel: Mesh = (() => {
+      const r = ring(12);
+      const positions: number[] = [];
+      // build a thin triangle fan so featureEdges recovers the rim loop as a boundary
+      for (const [a, b] of r) positions.push(0, 0, 0, ...a, ...b);
+      const indices = Array.from({ length: r.length }, (_, i) => [i * 3, i * 3 + 1, i * 3 + 2]).flat();
+      return { positions: new Float32Array(positions), indices: new Uint32Array(indices) };
+    })();
+    const flat = meshToShapes([wheel]);
+    const smooth = meshToShapes([wheel], { smooth: true });
+    // smoothing collapses many straight rim segments into far fewer curved paths
+    expect(smooth.length).toBeLessThan(flat.length);
+    expect(smooth.some((s: any) => s.d.some((c: any) => c[0] === "Q"))).toBe(true);
+  });
+});
 
 /** unit cube, 8 shared corners, 12 triangles — closed, all creases 90° */
 function cube(): Mesh {

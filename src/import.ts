@@ -16,7 +16,7 @@
  *
  * Zero dependencies. GLB, OBJ and STL are parsed by hand; no Draco.
  */
-import type { Shape, V3 } from "./linework.js";
+import type { Shape, V3, Cmd } from "./linework.js";
 
 export interface Mesh {
   /** flat [x,y,z, x,y,z, …] in world space (node transforms applied) */
@@ -366,6 +366,9 @@ export interface ImportOptions extends EdgeOptions {
   /** simplify each part's edges (merge collinear chains, drop tiny segments)
    *  before emitting — cleaner line-art from over-tessellated meshes (L4). */
   simplify?: { minLen?: number; collinearDeg?: number; weld?: number };
+  /** chain edges + round them into smooth Bézier curves (L7) — makes a faceted
+   *  low-poly wheel/rim draw as a real circle instead of a polygon. */
+  smooth?: boolean;
 }
 
 /**
@@ -380,22 +383,23 @@ export interface ImportOptions extends EdgeOptions {
 export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] {
   const cls = opts.cls ?? "ink";
   const flipY = opts.flipY ?? true;
-  // keep each edge's source part alongside it (used only when grouped)
-  const edges: { e: [V3, V3]; part?: string }[] = [];
+  const edges: { e: [V3, V3]; part?: string }[] = []; // straight-line path (default)
+  const chains: (Chain & { part?: string })[] = []; // smoothed path (opts.smooth)
   for (const m of meshes) {
     const part = opts.grouped ? m.name : undefined;
     let es = featureEdges(m, opts);
     if (opts.simplify) es = simplifyEdges(es, opts.simplify); // per-part: never merge across parts
-    for (const e of es) edges.push({ e, part });
+    if (opts.smooth) for (const ch of chainEdges(es)) chains.push({ ...ch, part });
+    else for (const e of es) edges.push({ e, part });
   }
 
   // fit transform (uniform scale about the model center → screen box), global
+  const pts: V3[] = opts.smooth ? chains.flatMap((c) => c.points) : edges.flatMap((r) => r.e);
   let map = (v: V3): V3 => v;
   if (opts.fit) {
     const min = [Infinity, Infinity, Infinity], max = [-Infinity, -Infinity, -Infinity];
-    for (const { e } of edges)
-      for (const v of e)
-        for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], v[k]); max[k] = Math.max(max[k], v[k]); }
+    for (const v of pts)
+      for (let k = 0; k < 3; k++) { min[k] = Math.min(min[k], v[k]); max[k] = Math.max(max[k], v[k]); }
     const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2]) || 1;
     const s = opts.fit.size / span;
     const c = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
@@ -405,6 +409,13 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
     map = (v) => [v[0], -v[1], v[2]];
   }
 
+  if (opts.smooth) {
+    return chains.map((c) => {
+      const sh: any = { t: "path", d: smoothPath(c.points.map(map), c.closed), strokes: [{ cls }] };
+      if (c.part) sh.part = c.part;
+      return sh as Shape;
+    });
+  }
   return edges.map(({ e: [a, b], part }) => {
     const sh: any = { t: "path", d: [["M", map(a)], ["L", map(b)]], strokes: [{ cls }] };
     if (part) sh.part = part;
@@ -484,6 +495,77 @@ export function simplifyEdges(edges: [V3, V3][], opts: { minLen?: number; collin
     }
   }
   return list.filter(([a, b]) => len(a, b) >= minLen);
+}
+
+export interface Chain { points: V3[]; closed: boolean }
+
+/**
+ * Connect an edge set into polylines/loops (L7). Walks degree-2 runs and breaks
+ * at junctions (a vertex where 3+ edges meet) and endpoints — so a wheel rim
+ * comes out as ONE closed loop while a frame's tubes stay separate chains. The
+ * chains are what `smoothPath` rounds into real curves.
+ */
+export function chainEdges(edges: [V3, V3][], opts: { weld?: number } = {}): Chain[] {
+  const q = opts.weld ?? 1e-4;
+  const key = (v: V3) => `${Math.round(v[0] / q)},${Math.round(v[1] / q)},${Math.round(v[2] / q)}`;
+  const nodes = new Map<string, { pt: V3; nbrs: Set<string> }>();
+  const get = (v: V3): [string, { pt: V3; nbrs: Set<string> }] => {
+    const k = key(v); let n = nodes.get(k);
+    if (!n) { n = { pt: v, nbrs: new Set() }; nodes.set(k, n); }
+    return [k, n];
+  };
+  for (const [a, b] of edges) {
+    const [ka, na] = get(a), [kb, nb] = get(b);
+    if (ka === kb) continue;
+    na.nbrs.add(kb); nb.nbrs.add(ka);
+  }
+  const ekey = (a: string, b: string) => (a < b ? a + "|" + b : b + "|" + a);
+  const used = new Set<string>();
+  const chains: Chain[] = [];
+  const startFrom = (k0: string) => {
+    const n0 = nodes.get(k0)!;
+    for (const first of [...n0.nbrs]) {
+      if (used.has(ekey(k0, first))) continue;
+      used.add(ekey(k0, first));
+      const points = [n0.pt, nodes.get(first)!.pt];
+      let prev = k0, cur = first, closed = false;
+      while (nodes.get(cur)!.nbrs.size === 2) {
+        const next = [...nodes.get(cur)!.nbrs].find((x) => x !== prev);
+        if (next === undefined || used.has(ekey(cur, next))) break;
+        used.add(ekey(cur, next));
+        if (next === k0) { closed = true; break; }
+        points.push(nodes.get(next)!.pt);
+        prev = cur; cur = next;
+      }
+      chains.push({ points, closed });
+    }
+  };
+  for (const k of nodes.keys()) if (nodes.get(k)!.nbrs.size !== 2) startFrom(k); // junctions/endpoints
+  for (const k of nodes.keys()) if (nodes.get(k)!.nbrs.size === 2) startFrom(k); // pure loops
+  return chains;
+}
+
+const mid3 = (a: V3, b: V3): V3 => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2];
+
+/**
+ * Turn a chain of points into a SMOOTH path (L7) via midpoint quadratic Béziers
+ * — a faceted 12-gon wheel becomes a round curve. Straight and 2-point chains
+ * stay straight. Closed chains emit M…Q…Z.
+ */
+export function smoothPath(points: V3[], closed: boolean): Cmd[] {
+  const P = points, n = P.length;
+  if (n < 3) return n === 2 ? [["M", P[0]], ["L", P[1]]] : [["M", P[0]]];
+  const cmds: Cmd[] = [];
+  if (closed) {
+    cmds.push(["M", mid3(P[n - 1], P[0])]);
+    for (let i = 0; i < n; i++) cmds.push(["Q", P[i], mid3(P[i], P[(i + 1) % n])]);
+    cmds.push(["Z"]);
+  } else {
+    cmds.push(["M", P[0]], ["L", mid3(P[0], P[1])]);
+    for (let i = 1; i < n - 1; i++) cmds.push(["Q", P[i], mid3(P[i], P[i + 1])]);
+    cmds.push(["L", P[n - 1]]);
+  }
+  return cmds;
 }
 
 /**
