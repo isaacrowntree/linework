@@ -1,5 +1,29 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, orient, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, orient, decimate, type Mesh } from "./import";
+
+describe("decimate (L9 — tame high-poly models before extraction)", () => {
+  it("collapses a finely subdivided plane to far fewer triangles", () => {
+    const N = 20, pos: number[] = [], idx: number[] = [];
+    for (let y = 0; y <= N; y++) for (let x = 0; x <= N; x++) pos.push(x / N, y / N, 0);
+    const vi = (x: number, y: number) => y * (N + 1) + x;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) idx.push(vi(x, y), vi(x + 1, y), vi(x + 1, y + 1), vi(x, y), vi(x + 1, y + 1), vi(x, y + 1));
+    const m: Mesh = { positions: new Float32Array(pos), indices: new Uint32Array(idx) };
+    const [d] = decimate([m], { grid: 4 });
+    expect(d.positions.length / 3).toBeLessThan(m.positions.length / 3);
+    expect(d.indices.length).toBeLessThan(m.indices.length);
+    expect(d.indices.length % 3).toBe(0);
+  });
+
+  it("keeps a cube's corners + its 12 edges at a coarse grid", () => {
+    const [d] = decimate([cube()], { grid: 48 });
+    expect(d.positions.length / 3).toBe(8);
+    expect(featureEdges(d).length).toBe(12);
+  });
+
+  it("preserves the mesh name", () => {
+    expect(decimate([{ ...cube(), name: "wheel" }])[0].name).toBe("wheel");
+  });
+});
 
 describe("orient (L5 — auto side-profile via PCA)", () => {
   const span = (m: Mesh, axis: number) => {

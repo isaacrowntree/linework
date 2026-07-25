@@ -430,6 +430,43 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
   });
 }
 
+/**
+ * Vertex-cluster decimation (L9) — snap vertices to a grid and merge, so a
+ * high-poly (or scanned) model collapses to a low-poly one BEFORE edge
+ * extraction: fast, and it yields the clean line art of a low-poly asset from
+ * any source. O(n). `grid` is the number of cells across the longest axis
+ * (higher = more detail retained). Degenerate triangles are dropped.
+ */
+export function decimate(meshes: Mesh[], opts: { grid?: number } = {}): Mesh[] {
+  const grid = opts.grid ?? 48;
+  return meshes.map((m) => {
+    const p = m.positions;
+    let minx = Infinity, miny = Infinity, minz = Infinity, maxx = -Infinity, maxy = -Infinity, maxz = -Infinity;
+    for (let i = 0; i < p.length; i += 3) {
+      minx = Math.min(minx, p[i]); miny = Math.min(miny, p[i + 1]); minz = Math.min(minz, p[i + 2]);
+      maxx = Math.max(maxx, p[i]); maxy = Math.max(maxy, p[i + 1]); maxz = Math.max(maxz, p[i + 2]);
+    }
+    const cell = (Math.max(maxx - minx, maxy - miny, maxz - minz) || 1) / grid;
+    const cells = new Map<string, { idx: number; sx: number; sy: number; sz: number; n: number }>();
+    const newPos: number[] = [];
+    const vmap = new Int32Array(p.length / 3);
+    for (let i = 0; i < p.length; i += 3) {
+      const k = `${Math.round((p[i] - minx) / cell)},${Math.round((p[i + 1] - miny) / cell)},${Math.round((p[i + 2] - minz) / cell)}`;
+      let c = cells.get(k);
+      if (!c) { c = { idx: newPos.length / 3, sx: 0, sy: 0, sz: 0, n: 0 }; cells.set(k, c); newPos.push(0, 0, 0); }
+      c.sx += p[i]; c.sy += p[i + 1]; c.sz += p[i + 2]; c.n++;
+      vmap[i / 3] = c.idx;
+    }
+    for (const c of cells.values()) { newPos[c.idx * 3] = c.sx / c.n; newPos[c.idx * 3 + 1] = c.sy / c.n; newPos[c.idx * 3 + 2] = c.sz / c.n; }
+    const idx = m.indices, out: number[] = [];
+    for (let i = 0; i < idx.length; i += 3) {
+      const a = vmap[idx[i]], b = vmap[idx[i + 1]], cc = vmap[idx[i + 2]];
+      if (a !== b && b !== cc && a !== cc) out.push(a, b, cc); // drop collapsed (degenerate) triangles
+    }
+    return { ...m, positions: new Float32Array(newPos), indices: new Uint32Array(out) };
+  });
+}
+
 /** Eigen-decomposition of a symmetric 3×3 (cyclic Jacobi). Columns of `vectors`
  *  are the eigenvectors; sign is arbitrary (fine for orientation). */
 function jacobiEigen3(a: number[][]): { vectors: number[][]; values: number[] } {
