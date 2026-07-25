@@ -3,19 +3,6 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
-## [0.3.0] — 2026-07-24
-
-### Added
-- **More import formats** (`linework/import`): `parseSTL` (binary or ASCII — the
-  3D-printing format), `fromBufferGeometry` (adapt a three.js `BufferGeometry`
-  with no three.js dependency), and `fromOcct` (map [occt-import-js] STEP/IGES
-  results in — the CAD kernel stays an optional ~6 MB peer, not a dependency).
-- Live demo importer now accepts `.stl` alongside `.glb` / `.obj`.
-- 6 more tests (binary + ASCII STL round-trips, size-based binary detection,
-  three.js adapter indexed/non-indexed, occt result mapping). 25 total.
-
-[occt-import-js]: https://github.com/kovacsv/occt-import-js
-
 ## [0.4.0] — 2026-07-25
 
 ### Security
@@ -35,7 +22,24 @@ All notable changes to this project are documented here. Format follows
 - Tooling: ESLint (flat config) + typescript-eslint, coverage (`test:coverage`),
   Dependabot (npm + actions), `.editorconfig`, `.nvmrc`.
 - CI: Node 20/22/24 matrix, least-privilege token permissions, lint step.
-- `release.yml` — publishes to npm with build **provenance** on a `v*` tag.
+- `publish.yml` — publishes to npm with build **provenance** on a `v*` tag, via
+  OIDC trusted publishing (no token).
+
+[0.4.0]: https://github.com/isaacrowntree/linework/releases/tag/v0.4.0
+
+## [0.3.0] — 2026-07-24
+
+### Added
+- **More import formats** (`linework/import`): `parseSTL` (binary or ASCII — the
+  3D-printing format), `fromBufferGeometry` (adapt a three.js `BufferGeometry`
+  with no three.js dependency), and `fromOcct` (map [occt-import-js] STEP/IGES
+  results in — the CAD kernel stays an optional ~6 MB peer, not a dependency).
+- Live demo importer now accepts `.stl` alongside `.glb` / `.obj`.
+- 6 more tests (binary + ASCII STL round-trips, size-based binary detection,
+  three.js adapter indexed/non-indexed, occt result mapping). 25 total.
+
+[occt-import-js]: https://github.com/kovacsv/occt-import-js
+[0.3.0]: https://github.com/isaacrowntree/linework/releases/tag/v0.3.0
 
 ## [0.2.0] — 2026-07-24
 
