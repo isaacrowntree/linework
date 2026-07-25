@@ -198,6 +198,17 @@ describe("feature-edge extraction", () => {
     expect(featureEdges(tri, { angle: 25 }).length).toBe(3);
   });
 
+  it("ignores a zero-area (degenerate) triangle instead of forcing false creases", () => {
+    // a real triangle + a collinear (zero-area) triangle sharing an edge; the
+    // degenerate one must not turn the shared edge into a spurious crease
+    const m: Mesh = {
+      positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, /*collinear:*/ 0, 0, 0, 1, 0, 0, 2, 0, 0]),
+      indices: new Uint32Array([0, 1, 2, 3, 4, 5]),
+    };
+    // only the real triangle's 3 boundary edges survive; the degenerate triangle adds none
+    expect(featureEdges(m, { angle: 25 }).length).toBe(3);
+  });
+
   it("welds coincident but separately-indexed vertices so shared edges aren't seen as boundaries", () => {
     // two triangles forming a flat quad, sharing an edge but NOT sharing indices
     const m: Mesh = {
