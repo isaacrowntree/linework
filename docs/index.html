@@ -146,6 +146,8 @@
   .drop-big span { display: block; margin-top: 6px; color: var(--mut); font-size: 13px; }
   #drop:hover .drop-big, #drop.over .drop-big { border-color: var(--acc); background: var(--panel); }
   #iperf { margin-left: auto; font-family: var(--mono); font-size: 12px; color: var(--acc); }
+  .boardbar label.toggle { text-transform: none; letter-spacing: .04em; gap: 6px; cursor: pointer; }
+  .boardbar label.toggle input { accent-color: var(--acc); width: auto; }
 </style>
 </head>
 <body>
@@ -172,11 +174,17 @@
 
     <div>
       <div class="board">
-        <svg id="stage" viewBox="0 0 800 600" role="img" aria-label="A CC0 street lantern, imported from a glTF mesh and rendered as feature-edge linework — drag to orbit">
+        <svg id="stage" viewBox="0 0 800 600" role="img" aria-label="A CC0 street lantern, imported from a glTF mesh and rendered as feature-edge linework with dimension lines, callout balloons and a title block — drag to orbit">
+          <defs>
+            <marker id="dimarr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0L8 4L0 8z" fill="var(--mut)"/>
+            </marker>
+          </defs>
           <g id="scene"></g>
         </svg>
         <div class="boardbar">
           <label data-no-orbit>Creases <input id="hcrease" type="range" min="10" max="45" value="25" aria-label="Crease angle threshold"></label>
+          <label data-no-orbit class="toggle"><input id="anno" type="checkbox" checked aria-label="Show annotations"> Annotate</label>
           <span id="perf">—</span>
         </div>
       </div>
@@ -290,21 +298,72 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
   const g = document.getElementById("scene");
   const perf = document.getElementById("perf");
   const hcrease = document.getElementById("hcrease");
+  const anno = document.getElementById("anno");
   const istat = document.getElementById("istat");
   const drop = document.getElementById("drop");
   const ifile = document.getElementById("ifile");
   const HVIEW = { yaw: 0.62, pitch: 0.32, f: 1400, cx: 400, cy: 300 };
-  let meshes = null;
+  let meshes = null, nativeSize = [0, 0, 0];
+  let curShapes = [], anchors = null; // cached — recomputed on mesh/crease change, NOT per orbit frame
+
+  // Feature extraction + fit are view-independent, so do them once and only
+  // re-project each frame. Also precompute the annotation anchors here.
+  function rebuild() {
+    if (!meshes) return;
+    curShapes = meshToShapes(meshes, { angle: +hcrease.value, cls: "ink", fit: { cx: 400, cy: 300, size: 400 } });
+    const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+    let apex, reach, base;
+    for (const s of curShapes) for (const c of s.d) {
+      if (c[0] === "Z") continue; const p = c[1];
+      for (let k = 0; k < 3; k++) { if (p[k] < mn[k]) mn[k] = p[k]; if (p[k] > mx[k]) mx[k] = p[k]; }
+      if (!apex || p[1] < apex[1]) apex = p;      // topmost model point
+      if (!reach || p[0] > reach[0]) reach = p;   // furthest-out model point
+      if (!base || p[1] > base[1]) base = p;      // lowest model point
+    }
+    const corners = [];
+    for (const A of [mn[0], mx[0]]) for (const B of [mn[1], mx[1]]) for (const C of [mn[2], mx[2]]) corners.push([A, B, C]);
+    anchors = { corners, apex, reach, base };
+  }
+
+  // Paper-space annotation layer, composed OVER the imported drawing — proof
+  // that annotations are first-class regardless of where the geometry came
+  // from. Overall dimensions auto-derive from the mesh bounds; callout balloons
+  // anchor to the model's extreme features; the title block is fixed. It all
+  // re-projects each frame, so it tracks the orbiting model yet stays flat.
+  function annotate(view) {
+    const X = xform(view), f = (n) => n.toFixed(1);
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of anchors.corners) { const q = X(c); if (q.x < x0) x0 = q.x; if (q.y < y0) y0 = q.y; if (q.x > x1) x1 = q.x; if (q.y > y1) y1 = q.y; }
+    const top = X(anchors.apex), right = X(anchors.reach), bottom = X(anchors.base);
+    const [nw, nh] = nativeSize, o = [];
+    // overall width dimension, bracketing below the drawing
+    const yb = y1 + 24;
+    o.push(`<line x1="${f(x0)}" y1="${f(y1)}" x2="${f(x0)}" y2="${f(yb + 5)}" class="mut"/><line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x1)}" y2="${f(yb + 5)}" class="mut"/>`);
+    o.push(`<line x1="${f(x0)}" y1="${f(yb)}" x2="${f(x1)}" y2="${f(yb)}" class="mut" marker-start="url(#dimarr)" marker-end="url(#dimarr)"/>`);
+    o.push(`<rect x="${f((x0 + x1) / 2 - 26)}" y="${f(yb - 9)}" width="52" height="16" fill="var(--field-1)"/><text x="${f((x0 + x1) / 2)}" y="${f(yb + 4)}" text-anchor="middle" class="an">${nw.toFixed(1)}</text>`);
+    // overall height dimension, bracketing to the left
+    const xl = x0 - 24, my = (y0 + y1) / 2;
+    o.push(`<line x1="${f(x0)}" y1="${f(y0)}" x2="${f(xl - 5)}" y2="${f(y0)}" class="mut"/><line x1="${f(x0)}" y1="${f(y1)}" x2="${f(xl - 5)}" y2="${f(y1)}" class="mut"/>`);
+    o.push(`<line x1="${f(xl)}" y1="${f(y0)}" x2="${f(xl)}" y2="${f(y1)}" class="mut" marker-start="url(#dimarr)" marker-end="url(#dimarr)"/>`);
+    o.push(`<g transform="rotate(-90 ${f(xl - 8)} ${f(my)})"><rect x="${f(xl - 8 - 26)}" y="${f(my - 9)}" width="52" height="16" fill="var(--field-1)"/><text x="${f(xl - 8)}" y="${f(my + 4)}" text-anchor="middle" class="an">${nh.toFixed(1)}</text></g>`);
+    // callout balloons at auto-picked extreme features
+    const bl = (n, a, dx, dy) => `<line x1="${f(a.x)}" y1="${f(a.y)}" x2="${f(a.x + dx)}" y2="${f(a.y + dy)}" class="mut"/><circle cx="${f(a.x + dx)}" cy="${f(a.y + dy)}" r="11" class="bl"/><text x="${f(a.x + dx)}" y="${f(a.y + dy + 4)}" text-anchor="middle" class="bt">${n}</text>`;
+    o.push(bl(1, top, 26, -22) + bl(2, right, 30, -4) + bl(3, bottom, -26, 20));
+    // legend + title block, fixed in paper space
+    o.push(`<text x="20" y="588" class="an">1 apex · 2 reach · 3 base · overall dims in model units</text>`);
+    o.push(`<rect x="554" y="18" width="228" height="40" class="tbr"/><line x1="554" y1="38" x2="782" y2="38" class="mut"/><text x="562" y="33" class="tt">IMPORTED · CC0 LANTERN</text><text x="562" y="53" class="an">glTF mesh → ${curShapes.length} feature edges</text>`);
+    return o.join("");
+  }
 
   function draw(view) {
     if (!meshes) return;
     const t0 = performance.now();
-    const shapes = meshToShapes(meshes, { angle: +hcrease.value, cls: "ink", fit: { cx: 400, cy: 300, size: 440 } });
-    g.innerHTML = render(shapes, view);
-    perf.textContent = `${shapes.length} edges · ${(performance.now() - t0).toFixed(1)} ms`;
+    g.innerHTML = render(curShapes, view) + (anno.checked ? annotate(view) : "");
+    perf.textContent = `${curShapes.length} edges · ${(performance.now() - t0).toFixed(1)} ms`;
   }
   const ctl = orbit(stage, { view: HVIEW, idle: 0.08, pitchRange: [0.05, 0.6], onFrame: draw });
-  hcrease.addEventListener("input", () => ctl.redraw());
+  hcrease.addEventListener("input", () => { rebuild(); ctl.redraw(); });
+  anno.addEventListener("change", () => ctl.redraw());
 
   function ingest(buf, name) {
     try {
@@ -315,7 +374,12 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
       const tris = m.reduce((a, x) => a + x.indices.length / 3, 0);
       if (!tris) throw new Error("no geometry found");
       meshes = m;
+      // native bounding box → the overall-dimension values the annotations show
+      const mn = [Infinity, Infinity, Infinity], mx = [-Infinity, -Infinity, -Infinity];
+      for (const mesh of m) { const p = mesh.positions; for (let i = 0; i < p.length; i += 3) for (let k = 0; k < 3; k++) { if (p[i + k] < mn[k]) mn[k] = p[i + k]; if (p[i + k] > mx[k]) mx[k] = p[i + k]; } }
+      nativeSize = [mx[0] - mn[0], mx[1] - mn[1], mx[2] - mn[2]];
       istat.innerHTML = `<b>${name}</b> — ${m.length} mesh · ${tris.toLocaleString()} triangles → feature edges, live.`;
+      rebuild();
       ctl.redraw();
     } catch (err) {
       istat.innerHTML = `<span style="color:#E06A5D">Couldn't read ${name}: ${err.message}. Try an uncompressed .glb (no Draco), .obj, or .stl.</span>`;

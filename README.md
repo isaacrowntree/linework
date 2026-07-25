@@ -87,6 +87,8 @@ el.innerHTML = render(shapes, { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300
 
 STEP is a trimmed-NURBS B-rep, not a mesh — tessellating it is a job for a real CAD kernel, so linework doesn't embed one. `occt-import-js` returns meshes that `fromOcct()` maps straight in, keeping the ~6 MB kernel an optional peer rather than a dependency.
 
+**Imported geometry is just shapes** — so you layer paper-space annotations (overall dimensions, callout balloons, a title block) over an import exactly as you would a hand-authored scene. The [live demo](https://isaacrowntree.com/linework/) dimensions the lantern automatically from its mesh bounds and balloons its extreme features; toggle **Annotate** to see the annotation layer come and go over the same rotating model.
+
 ## Coordinates (read this once)
 
 | Field | Meaning |
