@@ -1,5 +1,33 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, orient, type Mesh } from "./import";
+
+describe("orient (L5 — auto side-profile via PCA)", () => {
+  const span = (m: Mesh, axis: number) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = axis; i < m.positions.length; i += 3) { lo = Math.min(lo, m.positions[i]); hi = Math.max(hi, m.positions[i]); }
+    return hi - lo;
+  };
+  // a box mis-oriented: longest along Z (8), medium Y (4), thin along X (1)
+  const box = (sx: number, sy: number, sz: number): Mesh => {
+    const c = [[-sx, -sy, -sz], [sx, -sy, -sz], [sx, sy, -sz], [-sx, sy, -sz], [-sx, -sy, sz], [sx, -sy, sz], [sx, sy, sz], [-sx, sy, sz]].flat();
+    const idx = [0, 2, 1, 0, 3, 2, 4, 5, 6, 4, 6, 7, 0, 1, 5, 0, 5, 4, 3, 7, 6, 3, 6, 2, 0, 4, 7, 0, 7, 3, 1, 2, 6, 1, 6, 5];
+    return { positions: new Float32Array(c), indices: new Uint32Array(idx) };
+  };
+
+  it("aligns the longest extent to X and the thinnest to Z", () => {
+    const [m] = orient([box(0.5, 2, 4)]); // thin X, tall Y, long Z
+    expect(span(m, 0)).toBeGreaterThan(span(m, 1)); // X (length) > Y (height)
+    expect(span(m, 1)).toBeGreaterThan(span(m, 2)); // Y (height) > Z (depth/thin)
+    expect(span(m, 0)).toBeCloseTo(8, 3); // longest ≈ 8
+    expect(span(m, 2)).toBeCloseTo(1, 3); // thinnest ≈ 1
+  });
+
+  it("is a no-op (within tolerance) for an already-aligned model", () => {
+    const [m] = orient([box(4, 2, 0.5)]); // already long-X, thin-Z
+    expect(span(m, 0)).toBeCloseTo(8, 3);
+    expect(span(m, 2)).toBeCloseTo(1, 3);
+  });
+});
 
 describe("fitCircle + circlePoints (L8 — round mechanical parts become true circles)", () => {
   const poly = (n: number, r = 2, cz = 0): any[] =>

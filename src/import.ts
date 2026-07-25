@@ -430,6 +430,62 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
   });
 }
 
+/** Eigen-decomposition of a symmetric 3×3 (cyclic Jacobi). Columns of `vectors`
+ *  are the eigenvectors; sign is arbitrary (fine for orientation). */
+function jacobiEigen3(a: number[][]): { vectors: number[][]; values: number[] } {
+  const A = a.map((r) => r.slice());
+  const V = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  for (let sweep = 0; sweep < 60; sweep++) {
+    // largest off-diagonal
+    let p = 0, q = 1;
+    if (Math.abs(A[0][2]) > Math.abs(A[p][q])) { p = 0; q = 2; }
+    if (Math.abs(A[1][2]) > Math.abs(A[p][q])) { p = 1; q = 2; }
+    const apq = A[p][q];
+    if (Math.abs(apq) < 1e-14) break;
+    const theta = 0.5 * Math.atan2(2 * apq, A[p][p] - A[q][q]);
+    const c = Math.cos(theta), s = Math.sin(theta);
+    for (let k = 0; k < 3; k++) { const kp = A[k][p], kq = A[k][q]; A[k][p] = c * kp + s * kq; A[k][q] = -s * kp + c * kq; }
+    for (let k = 0; k < 3; k++) { const pk = A[p][k], qk = A[q][k]; A[p][k] = c * pk + s * qk; A[q][k] = -s * pk + c * qk; }
+    for (let k = 0; k < 3; k++) { const kp = V[k][p], kq = V[k][q]; V[k][p] = c * kp + s * kq; V[k][q] = -s * kp + c * kq; }
+  }
+  return { vectors: V, values: [A[0][0], A[1][1], A[2][2]] };
+}
+
+/**
+ * Auto-orient meshes to a canonical side profile (L5) via PCA: the longest
+ * principal axis becomes screen-X (bike length), the next screen-Y (height), and
+ * the thinnest becomes view depth Z — so an arbitrary downloaded model renders as
+ * a clean side view without hand-tuning. Pure; returns new meshes.
+ */
+export function orient(meshes: Mesh[]): Mesh[] {
+  let cx = 0, cy = 0, cz = 0, N = 0;
+  for (const m of meshes) { const p = m.positions; for (let i = 0; i < p.length; i += 3) { cx += p[i]; cy += p[i + 1]; cz += p[i + 2]; N++; } }
+  if (!N) return meshes;
+  cx /= N; cy /= N; cz /= N;
+  let xx = 0, xy = 0, xz = 0, yy = 0, yz = 0, zz = 0;
+  for (const m of meshes) {
+    const p = m.positions;
+    for (let i = 0; i < p.length; i += 3) {
+      const dx = p[i] - cx, dy = p[i + 1] - cy, dz = p[i + 2] - cz;
+      xx += dx * dx; xy += dx * dy; xz += dx * dz; yy += dy * dy; yz += dy * dz; zz += dz * dz;
+    }
+  }
+  const { vectors: V, values } = jacobiEigen3([[xx, xy, xz], [xy, yy, yz], [xz, yz, zz]]);
+  const order = [0, 1, 2].sort((a, b) => values[b] - values[a]); // longest variance first
+  const ax = (j: number): V3 => [V[0][j], V[1][j], V[2][j]];
+  const ex = ax(order[0]), ey = ax(order[1]), ez = ax(order[2]);
+  return meshes.map((m) => {
+    const p = m.positions, out = new Float32Array(p.length);
+    for (let i = 0; i < p.length; i += 3) {
+      const dx = p[i] - cx, dy = p[i + 1] - cy, dz = p[i + 2] - cz;
+      out[i] = dx * ex[0] + dy * ex[1] + dz * ex[2] + cx;
+      out[i + 1] = dx * ey[0] + dy * ey[1] + dz * ey[2] + cy;
+      out[i + 2] = dx * ez[0] + dy * ez[1] + dz * ez[2] + cz;
+    }
+    return { ...m, positions: out };
+  });
+}
+
 /** Mean vertex of a mesh — the part's centroid. */
 function centroid(m: Mesh): V3 {
   const p = m.positions, n = p.length / 3 || 1;
