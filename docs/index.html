@@ -290,10 +290,10 @@ writeFileSync(<span class="s">"diagram.svg"</span>, wrap(render(shapes, view)));
 <!-- data-cfasync="false" opts this out of Cloudflare Rocket Loader, which rewrites
      type="module" and re-executes the script itself, breaking ES module linking. -->
 <script type="module" data-cfasync="false">
-  import { xform, render } from "./linework.js";
-  import { line3 } from "./helpers.js";
-  import { orbit } from "./orbit.js";
-  import { parseGLB, parseOBJ, parseSTL, meshToShapes } from "./import.js";
+  import { xform, render } from "./linework.js?v=f399d697";
+  import { line3 } from "./helpers.js?v=5e94f57a";
+  import { orbit } from "./orbit.js?v=6f044eb4";
+  import { parseGLB, parseOBJ, parseSTL, meshToShapes } from "./import.js?v=1b0bccf7";
 
   /* ---------- hero: a glTF mesh imported live, orbiting ---------- */
   const stage = document.getElementById("stage");

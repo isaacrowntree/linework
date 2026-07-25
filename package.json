@@ -22,7 +22,7 @@
   "engines": { "node": ">=18" },
   "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint", "gltf", "stl"],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && cp dist/*.js dist/*.js.map docs/",
+    "build": "tsc -p tsconfig.build.json && cp dist/*.js dist/*.js.map docs/ && node scripts/stamp-docs.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vitest run",
