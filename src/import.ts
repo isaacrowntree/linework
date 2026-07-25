@@ -431,6 +431,38 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
 }
 
 /**
+ * Build a capped cylinder mesh between two points (authoring primitive). A bike
+ * frame is tubes between geometry points, so this is the unit for generating a
+ * real, low-poly, own-it 3D frame that flows through the whole pipeline — the
+ * tube's circular cross-section makes it read as a solid tube under rotation,
+ * and L7/L8 keep the ends round. `segments` sets the tube's facet count.
+ */
+export function cylinderMesh(a: V3, b: V3, radius: number, segments = 8): Mesh {
+  const ax: V3 = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+  const len = Math.hypot(ax[0], ax[1], ax[2]) || 1;
+  const axis: V3 = [ax[0] / len, ax[1] / len, ax[2] / len];
+  const ref: V3 = Math.abs(axis[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0];
+  const u = norm3(cross3(axis, ref));
+  const v = cross3(axis, u);
+  const pos: number[] = [];
+  for (const c of [a, b])
+    for (let i = 0; i < segments; i++) {
+      const t = (i / segments) * 2 * Math.PI, cu = Math.cos(t) * radius, sv = Math.sin(t) * radius;
+      pos.push(c[0] + cu * u[0] + sv * v[0], c[1] + cu * u[1] + sv * v[1], c[2] + cu * u[2] + sv * v[2]);
+    }
+  const capA = pos.length / 3; pos.push(a[0], a[1], a[2]);
+  const capB = pos.length / 3; pos.push(b[0], b[1], b[2]);
+  const idx: number[] = [];
+  for (let i = 0; i < segments; i++) {
+    const i1 = (i + 1) % segments, aI = i, aI1 = i1, bI = segments + i, bI1 = segments + i1;
+    idx.push(aI, bI, bI1, aI, bI1, aI1); // side quad
+    idx.push(capA, aI1, aI);            // cap A fan
+    idx.push(capB, bI, bI1);            // cap B fan
+  }
+  return { positions: new Float32Array(pos), indices: new Uint32Array(idx) };
+}
+
+/**
  * Vertex-cluster decimation (L9) — snap vertices to a grid and merge, so a
  * high-poly (or scanned) model collapses to a low-poly one BEFORE edge
  * extraction: fast, and it yields the clean line art of a low-poly asset from

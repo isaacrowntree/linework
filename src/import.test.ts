@@ -1,5 +1,26 @@
 import { describe, it, expect } from "vitest";
-import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, orient, decimate, type Mesh } from "./import";
+import { featureEdges, parseGLB, parseOBJ, parseSTL, fromBufferGeometry, fromOcct, meshToShapes, meshGroups, explode, simplifyEdges, chainEdges, smoothPath, fitCircle, circlePoints, orient, decimate, cylinderMesh, type Mesh } from "./import";
+
+describe("cylinderMesh (authoring — real 3D tubes from two endpoints)", () => {
+  const spanAxis = (m: Mesh, k: number) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = k; i < m.positions.length; i += 3) { lo = Math.min(lo, m.positions[i]); hi = Math.max(hi, m.positions[i]); }
+    return hi - lo;
+  };
+  it("builds a capped cylinder: 2 rings + 2 cap centres, valid triangles, feature edges", () => {
+    const m = cylinderMesh([0, 0, 0], [10, 0, 0], 1, 8);
+    expect(m.positions.length / 3).toBe(8 * 2 + 2);
+    expect(m.indices.length % 3).toBe(0);
+    expect(featureEdges(m, { angle: 20 }).length).toBeGreaterThan(0);
+  });
+  it("extends along its axis and is ~2·radius thick across", () => {
+    const m = cylinderMesh([0, 0, 0], [0, 12, 0], 1.5, 10);
+    expect(spanAxis(m, 1)).toBeCloseTo(12, 4);   // length along Y
+    // a 10-gon's bounding width is 2·r·max|sin| ≈ 2.85 (≤ diameter 3)
+    expect(spanAxis(m, 0)).toBeGreaterThan(2.7); expect(spanAxis(m, 0)).toBeLessThanOrEqual(3.01);
+    expect(spanAxis(m, 2)).toBeGreaterThan(2.7); expect(spanAxis(m, 2)).toBeLessThanOrEqual(3.01); // real 3D tube
+  });
+});
 
 describe("decimate (L9 — tame high-poly models before extraction)", () => {
   it("collapses a finely subdivided plane to far fewer triangles", () => {
