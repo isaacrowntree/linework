@@ -367,8 +367,9 @@ export interface ImportOptions extends EdgeOptions {
    *  before emitting — cleaner line-art from over-tessellated meshes (L4). */
   simplify?: { minLen?: number; collinearDeg?: number; weld?: number };
   /** chain edges + round them into smooth Bézier curves (L7) — makes a faceted
-   *  low-poly wheel/rim draw as a real circle instead of a polygon. */
-  smooth?: boolean;
+   *  low-poly wheel/rim draw as a real circle instead of a polygon. `true` traces
+   *  smooth curves through crossings (drivetrain); pass an object to tune. */
+  smooth?: boolean | { throughJunctions?: number };
 }
 
 /**
@@ -389,8 +390,10 @@ export function meshToShapes(meshes: Mesh[], opts: ImportOptions = {}): Shape[] 
     const part = opts.grouped ? m.name : undefined;
     let es = featureEdges(m, opts);
     if (opts.simplify) es = simplifyEdges(es, opts.simplify); // per-part: never merge across parts
-    if (opts.smooth) for (const ch of chainEdges(es)) chains.push({ ...ch, part });
-    else for (const e of es) edges.push({ e, part });
+    if (opts.smooth) {
+      const tj = typeof opts.smooth === "object" ? opts.smooth.throughJunctions ?? 30 : 30;
+      for (const ch of chainEdges(es, { throughJunctions: tj })) chains.push({ ...ch, part });
+    } else for (const e of es) edges.push({ e, part });
   }
 
   // fit transform (uniform scale about the model center → screen box), global
@@ -505,7 +508,7 @@ export interface Chain { points: V3[]; closed: boolean }
  * comes out as ONE closed loop while a frame's tubes stay separate chains. The
  * chains are what `smoothPath` rounds into real curves.
  */
-export function chainEdges(edges: [V3, V3][], opts: { weld?: number } = {}): Chain[] {
+export function chainEdges(edges: [V3, V3][], opts: { weld?: number; throughJunctions?: number } = {}): Chain[] {
   const q = opts.weld ?? 1e-4;
   const key = (v: V3) => `${Math.round(v[0] / q)},${Math.round(v[1] / q)},${Math.round(v[2] / q)}`;
   const nodes = new Map<string, { pt: V3; nbrs: Set<string> }>();
@@ -520,8 +523,11 @@ export function chainEdges(edges: [V3, V3][], opts: { weld?: number } = {}): Cha
     na.nbrs.add(kb); nb.nbrs.add(ka);
   }
   const ekey = (a: string, b: string) => (a < b ? a + "|" + b : b + "|" + a);
+  const unit = (a: V3, b: V3): V3 => { const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
+  const cosMax = opts.throughJunctions !== undefined ? Math.cos(opts.throughJunctions * Math.PI / 180) : null;
   const used = new Set<string>();
   const chains: Chain[] = [];
+
   const startFrom = (k0: string) => {
     const n0 = nodes.get(k0)!;
     for (const first of [...n0.nbrs]) {
@@ -529,19 +535,40 @@ export function chainEdges(edges: [V3, V3][], opts: { weld?: number } = {}): Cha
       used.add(ekey(k0, first));
       const points = [n0.pt, nodes.get(first)!.pt];
       let prev = k0, cur = first, closed = false;
-      while (nodes.get(cur)!.nbrs.size === 2) {
-        const next = [...nodes.get(cur)!.nbrs].find((x) => x !== prev);
-        if (next === undefined || used.has(ekey(cur, next))) break;
+      for (;;) {
+        const node = nodes.get(cur)!;
+        const cand = [...node.nbrs].filter((x) => !used.has(ekey(cur, x)));
+        let next: string | undefined;
+        if (cosMax !== null) {
+          // continue along the straightest available edge, if within the turn limit
+          const inDir = unit(nodes.get(prev)!.pt, node.pt);
+          let bestDot = -2;
+          for (const x of cand) {
+            const d = unit(node.pt, nodes.get(x)!.pt);
+            const dot = inDir[0] * d[0] + inDir[1] * d[1] + inDir[2] * d[2];
+            if (dot > bestDot) { bestDot = dot; next = x; }
+          }
+          if (next === undefined || bestDot < cosMax) break;
+        } else {
+          if (node.nbrs.size !== 2) break; // strict: stop at any junction
+          next = cand.find((x) => x !== prev);
+          if (next === undefined) break;
+        }
+        if (next === k0) { used.add(ekey(cur, next)); closed = true; break; }
         used.add(ekey(cur, next));
-        if (next === k0) { closed = true; break; }
         points.push(nodes.get(next)!.pt);
         prev = cur; cur = next;
       }
       chains.push({ points, closed });
     }
   };
-  for (const k of nodes.keys()) if (nodes.get(k)!.nbrs.size !== 2) startFrom(k); // junctions/endpoints
-  for (const k of nodes.keys()) if (nodes.get(k)!.nbrs.size === 2) startFrom(k); // pure loops
+
+  // endpoints first, then junctions, then pure loops — so a line flows through a
+  // crossing (started from its end) before the crossing spawns stubs.
+  const byDeg = (pred: (n: number) => boolean) => { for (const k of nodes.keys()) if (pred(nodes.get(k)!.nbrs.size)) startFrom(k); };
+  byDeg((n) => n === 1);
+  byDeg((n) => n >= 3);
+  byDeg((n) => n === 2);
   return chains;
 }
 

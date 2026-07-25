@@ -14,6 +14,17 @@ describe("chainEdges + smoothPath (L7 — round faceted curves)", () => {
     expect(chains[0].points.length).toBe(12);
   });
 
+  it("throughJunctions traces a smooth curve straight across a crossing", () => {
+    // a horizontal line and a vertical line crossing at the origin (degree-4 hub)
+    const edges: [any, any][] = [
+      [[-2, 0, 0], [0, 0, 0]], [[0, 0, 0], [2, 0, 0]],
+      [[0, -2, 0], [0, 0, 0]], [[0, 0, 0], [0, 2, 0]],
+    ];
+    expect(chainEdges(edges).length).toBe(4); // strict: the crossing chops both lines
+    const through = chainEdges(edges, { throughJunctions: 20 });
+    expect(through.length).toBe(2); // each line flows straight through the hub
+  });
+
   it("breaks chains at junctions (degree ≠ 2), so a frame's tubes stay separate", () => {
     // a Y: three edges meeting at the origin (degree-3 junction)
     const O: any = [0, 0, 0];
