@@ -106,7 +106,13 @@ function readAccessor(json, bin, index) {
     const base = (bv.byteOffset ?? 0) + (acc.byteOffset ?? 0);
     if (base < 0 || base + count * n * comp.size > bin.byteLength)
         return fail("accessor range is out of bounds");
-    const src = new comp.array(bin.buffer, bin.byteOffset + base, count * n);
+    const start = bin.byteOffset + base;
+    // typed-array views require the byte offset to be a multiple of the element size;
+    // a valid glTF can pack accessors at an unaligned offset, so copy when needed
+    // (otherwise `new Float32Array(buffer, offset)` throws a RangeError).
+    const src = start % comp.size === 0
+        ? new comp.array(bin.buffer, start, count * n)
+        : new comp.array(bin.buffer.slice(start, start + count * n * comp.size), 0, count * n);
     return Float64Array.from(src);
 }
 function extractMeshes(json, bin) {
@@ -248,7 +254,9 @@ function faceNormal(p, a, b, c) {
     const ux = p[b * 3] - p[a * 3], uy = p[b * 3 + 1] - p[a * 3 + 1], uz = p[b * 3 + 2] - p[a * 3 + 2];
     const vx = p[c * 3] - p[a * 3], vy = p[c * 3 + 1] - p[a * 3 + 1], vz = p[c * 3 + 2] - p[a * 3 + 2];
     const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    const m = Math.hypot(nx, ny, nz) || 1;
+    const m = Math.hypot(nx, ny, nz);
+    if (m < 1e-12)
+        return null; // zero-area (degenerate) triangle → no usable normal, don't force a false crease
     return [nx / m, ny / m, nz / m];
 }
 /**
@@ -286,6 +294,8 @@ export function featureEdges(mesh, opts = {}) {
     for (let t = 0; t < idx.length; t += 3) {
         const A = rep[idx[t]], B = rep[idx[t + 1]], C = rep[idx[t + 2]];
         const n = faceNormal(p, A, B, C);
+        if (!n)
+            continue; // degenerate triangle contributes no edges/normals
         for (const [u, v] of [[A, B], [B, C], [C, A]]) {
             if (u === v)
                 continue;
