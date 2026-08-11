@@ -20,7 +20,7 @@
   "bugs": "https://github.com/isaacrowntree/linework/issues",
   "homepage": "https://isaacrowntree.com/linework/",
   "engines": { "node": ">=18" },
-  "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint", "gltf", "stl"],
+  "keywords": ["svg", "3d", "pseudo-3d", "isometric", "technical-illustration", "exploded-diagram", "painters-algorithm", "blueprint", "gltf", "stl", "zdog", "technical-drawing", "line-art", "wireframe", "orthographic", "cad", "diagram", "svg-generation", "zero-dependencies"],
   "scripts": {
     "build": "tsc -p tsconfig.build.json && cp dist/*.js dist/*.js.map docs/ && node scripts/stamp-docs.mjs",
     "typecheck": "tsc --noEmit",
@@ -28,6 +28,7 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "images": "npm run build && node scripts/gen-import-demo.mjs",
+    "gif": "npm run build && node scripts/gen-hero-gif.mjs",
     "prepublishOnly": "npm run lint && npm run build && npm test"
   },
   "devDependencies": {

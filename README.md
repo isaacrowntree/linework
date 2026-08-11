@@ -10,13 +10,16 @@ A tiny **true-3D renderer for annotated technical drawings**, output as plain SV
 
 ### ▶ [Try the live demo — drop a 3D model, watch it become a drawing](https://isaacrowntree.com/linework/)
 
-[![A street lantern imported from a glTF mesh and rendered by linework as feature-edge linework](docs/import-lantern.svg)](https://isaacrowntree.com/linework/)
+<!-- Absolute raw URL, not a relative path: npmjs.com strips SVG images entirely
+     and only sometimes rewrites relative ones, so the package page was showing
+     no hero at all. A GIF at a raw.githubusercontent URL renders on both. -->
+[![A street lantern imported from a glTF mesh and rendered by linework as feature-edge linework, orbiting](https://raw.githubusercontent.com/isaacrowntree/linework/master/docs/hero-orbit.gif)](https://isaacrowntree.com/linework/)
 
-*The lantern above was **imported from a glTF mesh** and rendered by the library itself, in Node, with zero client JavaScript. On the [live demo](https://isaacrowntree.com/linework/) it orbits under your pointer — and you can drop your own model.*
+*Every frame above is a **fresh SVG string** — 5,394 triangles reduced to 2,490 feature edges, then rotated, projected and depth-sorted from scratch in ~2 ms. The lantern was **imported from a glTF mesh**, and the whole loop was rendered by the library itself, in Node, with zero client JavaScript (`npm run gif`). On the [live demo](https://isaacrowntree.com/linework/) it orbits under your pointer — and you can drop your own model.*
 
 ## Why
 
-The category is empty. WebGL libraries (three.js) make *shaded surfaces* easy and annotated linework painful — thin strokes, dash patterns, line-weight hierarchy, text callouts are all fights. Pseudo-3D toys (Zdog — last release 2019) can't do text or fine-grained depth sorting. Nothing ships "parametric technical illustration": exploded diagrams, dimension lines, balloons, title blocks. This does exactly that, and nothing else.
+The category is empty. WebGL libraries (three.js) make *shaded surfaces* easy and annotated linework painful — thin strokes, dash patterns, line-weight hierarchy, text callouts are all fights. Pseudo-3D toys (Zdog — last release 2022) can't do text or fine-grained depth sorting. Nothing ships "parametric technical illustration": exploded diagrams, dimension lines, balloons, title blocks. This does exactly that, and nothing else.
 
 - **The classic pipeline, honestly implemented** — 3D points → yaw/pitch rotation → perspective projection → painter's-algorithm depth sorting *per frame* → SVG string. Paint order is computed, never authored.
 - **Shapes built for drawings, not games** — multi-stroke paths (hollow-tube outlines as one shape), discs that project to correct ellipses, backface-culled boxes, per-object sorting for animated parts.
@@ -88,6 +91,28 @@ el.innerHTML = render(shapes, { yaw: 0.6, pitch: 0.35, f: 1400, cx: 400, cy: 300
 STEP is a trimmed-NURBS B-rep, not a mesh — tessellating it is a job for a real CAD kernel, so linework doesn't embed one. `occt-import-js` returns meshes that `fromOcct()` maps straight in, keeping the ~6 MB kernel an optional peer rather than a dependency.
 
 **Imported geometry is just shapes** — so you layer paper-space annotations (overall dimensions, callout balloons, a title block) over an import exactly as you would a hand-authored scene. The [live demo](https://isaacrowntree.com/linework/) dimensions the lantern automatically from its mesh bounds and balloons its extreme features; toggle **Annotate** to see the annotation layer come and go over the same rotating model.
+
+## Coming from Zdog
+
+[Zdog](https://github.com/metafizzy/zdog) is the closest thing to a predecessor, and its last npm release was v1.1.3 in January 2022. If you landed here looking for a maintained alternative, the mental model transfers — but two things differ in kind, not degree.
+
+**Zdog is pseudo-3D; this is true 3D.** Zdog sorts by a single per-shape depth value, so shapes that interpenetrate resolve wrong and you nudge `translate.z` until it looks right. Here every vertex is transformed and shapes are depth-sorted per frame, with `part()` giving you explicit sort units and `bias()` for the rare tie you want to break by hand.
+
+**Zdog paints to canvas or SVG elements; this emits SVG strings.** That difference is the whole point of the library: strings are server-renderable at build time, diffable in git, styleable from your own stylesheet, crawlable, and printable.
+
+| Zdog | linework |
+|---|---|
+| `new Zdog.Illustration({element})` | `sketch({ yaw, pitch, f, cx, cy })` — no canvas, no element |
+| `new Zdog.Box({...})` | `s.box(x, y, w, h, z, dz)` |
+| `new Zdog.Cylinder({...})` | `s.cyl(centre, r, zNear, zFar)` |
+| `new Zdog.Ellipse({...})` | `s.disc(centre, z, r)` / `s.cap(...)` |
+| `new Zdog.Shape({path: [...]})` | `s.tube(w).M(...).Q(...)` — multi-stroke, one sort unit |
+| `new Zdog.Anchor()` for grouping | `s.part(name, attrs, () => {...})` |
+| *no text support* | `s.note(text, point)` — paper-space annotations, dimension lines, balloons |
+| `illo.rotate.y += 0.03; illo.updateRenderGraph()` | `el.innerHTML = draw({ yaw, ... })` — rebuild the string, ~1 ms |
+| renders to canvas or an SVG element tree | emits an SVG **string** — server-renderable, diffable, printable |
+
+The trade is real and worth stating: Zdog's round-everything aesthetic and its canvas renderer are things this does not do. If you want soft, toy-like 3D, Zdog is still charming. If you want a *drawing* — hard edges, hairlines, callouts, a title block — this is built for that and nothing else.
 
 ## Coordinates (read this once)
 

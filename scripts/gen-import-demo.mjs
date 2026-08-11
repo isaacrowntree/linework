@@ -1,5 +1,7 @@
-// Regenerates the README hero image (docs/import-lantern.svg) from the
-// committed geometry-only lantern (docs/lantern.glb), entirely in Node —
+// Regenerates docs/import-lantern.svg — the still companion to the animated
+// README hero (see gen-hero-gif.mjs); kept because a crisp vector still is what
+// you want for slides, blog posts and anywhere a GIF would be wrong. Built from
+// the committed geometry-only lantern (docs/lantern.glb), entirely in Node —
 // proof of the zero-client-JS render path. Run: `npm run images`.
 //
 // docs/lantern.glb was bootstrapped once from the Khronos glTF-Sample-Assets

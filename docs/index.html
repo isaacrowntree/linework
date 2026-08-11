@@ -5,6 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>linework — true-3D annotated technical drawings in SVG</title>
 <meta name="description" content="A tiny zero-dependency renderer: 3D points in, depth-sorted SVG strings out. Built for exploded diagrams, callouts and dimension lines.">
+<link rel="canonical" href="https://isaacrowntree.com/linework/">
+
+<!-- Social cards. The library's whole pitch is visual, so a link that unfurls
+     to a blank rectangle wastes the impression. Absolute URLs are mandatory —
+     Slack, Bluesky and X will not resolve a relative og:image. -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="linework">
+<meta property="og:url" content="https://isaacrowntree.com/linework/">
+<meta property="og:title" content="linework — true-3D annotated technical drawings in SVG">
+<meta property="og:description" content="Drop a glTF, OBJ or STL model and watch it become a drawing: rotate, project, depth-sort, emit SVG strings. Zero dependencies, ~180-line core.">
+<meta property="og:image" content="https://isaacrowntree.com/linework/social-card.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The LINE/WORK wordmark on a cyanotype blueprint grid, beside a street lantern drawn as white feature-edge linework.">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="linework — true-3D annotated technical drawings in SVG">
+<meta name="twitter:description" content="Drop a glTF, OBJ or STL model and watch it become a drawing: rotate, project, depth-sort, emit SVG strings. Zero dependencies, ~180-line core.">
+<meta name="twitter:image" content="https://isaacrowntree.com/linework/social-card.png">
+<meta name="twitter:image:alt" content="The LINE/WORK wordmark on a cyanotype blueprint grid, beside a street lantern drawn as white feature-edge linework.">
+
 <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📐</text></svg>">
 <style>
   /* Cyanotype blueprint — a deliberate single-theme world: the medium is the subject. */
@@ -204,7 +224,7 @@
     <h2>The empty category</h2>
     <div class="cards">
       <div class="card"><h3>WebGL fights linework</h3><p>three.js makes shaded surfaces easy and technical drawing painful: 1px line limits, dash patterns via shaders, text callouts as a separate DOM overlay system. Every signature element of a service manual is an uphill fight.</p></div>
-      <div class="card"><h3>Pseudo-3D toys can't annotate</h3><p>Zdog nailed the flat-shaded look — and shipped its last release in 2019, with text as a third-party plugin. Dimension lines, balloons and leader text are the load-bearing half of a technical drawing.</p></div>
+      <div class="card"><h3>Pseudo-3D toys can't annotate</h3><p>Zdog nailed the flat-shaded look — and shipped its last release in early 2022, with text as a third-party plugin. Dimension lines, balloons and leader text are the load-bearing half of a technical drawing.</p></div>
       <div class="card"><h3>SVG strings are the point</h3><p>Output is plain markup: themeable with CSS variables, crawlable, printable, screen-reader friendly — and renderable server-side at build time with zero client JavaScript.</p></div>
     </div>
   </div>
