@@ -3,6 +3,50 @@
 All notable changes to this project are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); versions follow [SemVer](https://semver.org/).
 
+## [0.5.0] — 2026-10-16
+
+### Added
+- **Per-part import.** `meshToShapes(meshes, { grouped: true })` tags each
+  shape with its source mesh name as `part`, so multi-mesh models can be
+  annotated, exploded and depth-sorted per part. `meshGroups()` returns
+  per-part feature edges plus a centroid.
+- `explode(meshes, factor, { center?, axis? })` pushes parts out from the
+  assembly centre for exploded views. Returns new meshes.
+- `simplifyEdges()` merges near-collinear edge chains and drops tiny
+  segments. Enable it with `meshToShapes({ simplify })`.
+- **Curve smoothing.** `chainEdges()` joins feature edges into polylines and
+  loops, and can continue through junctions. `smoothPath()` redraws a chain as
+  quadratic Béziers. `meshToShapes({ smooth: true })` turns faceted low-poly
+  circles back into round curves.
+- `fitCircle()` and `circlePoints()` detect round loops (wheels, rotors,
+  cogs) and replace them with a true circle at the real radius under
+  `smooth`.
+- `orient()` turns a model to a side profile automatically by aligning its
+  principal axes (PCA) to the screen.
+- `decimate(meshes, { grid })` simplifies high-poly or scanned models by
+  vertex clustering before edge extraction.
+- `cylinderMesh(a, b, radius, segments?)` builds a capped cylinder between
+  two points, for procedural frames.
+
+### Fixed
+- glTF accessors at byte offsets that aren't aligned to the component size no
+  longer throw a `RangeError`.
+- Zero-area triangles no longer produce false crease edges.
+- Live demo: module imports are now cache-busted with content hashes, and the
+  module script opts out of Cloudflare Rocket Loader. Together these fixed the
+  `does not provide an export named 'parseSTL'` error.
+
+### Changed
+- Development toolchain: eslint 10, TypeScript 6.0, vitest 5, and
+  actions v7. CI tests on Node 22 and 24. The published package still
+  targets Node ≥ 18.
+- CI rebuilds `dist/` and `docs/` on every push to master, so the demo can't
+  drift from `src/`.
+- The README has an animated hero, a "Coming from Zdog" section and
+  social-card meta tags.
+
+[0.5.0]: https://github.com/isaacrowntree/linework/releases/tag/v0.5.0
+
 ## [0.4.0] — 2026-07-25
 
 ### Security
