@@ -15,7 +15,7 @@ A tiny **true-3D renderer for annotated technical drawings**, output as plain SV
      no hero at all. A GIF at a raw.githubusercontent URL renders on both. -->
 [![A street lantern imported from a glTF mesh and rendered by linework as feature-edge linework, orbiting](https://raw.githubusercontent.com/isaacrowntree/linework/master/docs/hero-orbit.gif)](https://isaacrowntree.com/linework/)
 
-*Every frame above is a **fresh SVG string** — 5,394 triangles reduced to 2,490 feature edges, then rotated, projected and depth-sorted from scratch in ~2 ms. The lantern was **imported from a glTF mesh**, and the whole loop was rendered by the library itself, in Node, with zero client JavaScript (`npm run gif`). On the [live demo](https://isaacrowntree.com/linework/) it orbits under your pointer — and you can drop your own model.*
+*Every frame above is a **fresh SVG string** — 5,394 triangles reduced to 2,490 feature edges, then rotated, projected and depth-sorted from scratch in ~2 ms. The lantern was **imported from a glTF mesh**, and the whole loop was rendered by the library itself, in Node, with zero client JavaScript (`bun run gif`). On the [live demo](https://isaacrowntree.com/linework/) it orbits under your pointer — and you can drop your own model.*
 
 ## Why
 
@@ -139,13 +139,13 @@ import { writeFileSync } from "node:fs";
 writeFileSync("diagram.svg", wrapInSvgTag(render(shapes, view)));
 ```
 
-The lantern hero above is generated exactly this way — [`scripts/gen-import-demo.mjs`](scripts/gen-import-demo.mjs) imports the committed model and renders the SVG in Node (`npm run images`); the [demo page](https://isaacrowntree.com/linework/) runs the same code live. For a hand-authored server-side example, see [`docs/scene.js`](docs/scene.js).
+The lantern hero above is generated exactly this way — [`scripts/gen-import-demo.mjs`](scripts/gen-import-demo.mjs) imports the committed model and renders the SVG in Node (`bun run images`); the [demo page](https://isaacrowntree.com/linework/) runs the same code live. For a hand-authored server-side example, see [`docs/scene.js`](docs/scene.js).
 
 ## Install & test
 
 ```bash
 npm i linework        # ESM, types included
-npm test              # projection, parallax, paint order, culling,
+bun run test          # projection, parallax, paint order, culling,
                       # sketch scoping, and feature-edge extraction
 ```
 

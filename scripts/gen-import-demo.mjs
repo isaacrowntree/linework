@@ -2,7 +2,7 @@
 // README hero (see gen-hero-gif.mjs); kept because a crisp vector still is what
 // you want for slides, blog posts and anywhere a GIF would be wrong. Built from
 // the committed geometry-only lantern (docs/lantern.glb), entirely in Node —
-// proof of the zero-client-JS render path. Run: `npm run images`.
+// proof of the zero-client-JS render path. Run: `bun run images`.
 //
 // docs/lantern.glb was bootstrapped once from the Khronos glTF-Sample-Assets
 // "Lantern" (CC0 1.0, public domain), texture-stripped to geometry only.

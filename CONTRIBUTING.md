@@ -20,11 +20,11 @@ welcome as long as they keep it that way.
 ```bash
 git clone https://github.com/isaacrowntree/linework
 cd linework
-npm install
-npm test            # unit + invariant tests
-npm run typecheck
-npm run build       # tsc → dist/ (ESM + .d.ts)
-npm run images      # regenerate the README hero image (server-side, in Node)
+bun install
+bun run test        # unit + invariant tests
+bun run typecheck
+bun run build       # tsc → dist/ (ESM + .d.ts)
+bun run images      # regenerate the README hero image (server-side, in Node)
 ```
 
 The demo page under `docs/` is served by GitHub Pages and doubles as a manual
@@ -45,7 +45,7 @@ test surface — open `docs/index.html` (any static server) and drag the drawing
 ## Submitting
 
 1. Fork, branch, and make your change with tests.
-2. `npm test && npm run typecheck && npm run build` all green.
+2. `bun run test && bun run typecheck && bun run build` all green.
 3. Open a PR describing the change and, for anything visual, include a before/after.
 
 CI runs typecheck + tests + build on every PR.

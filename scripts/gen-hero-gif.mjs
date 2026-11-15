@@ -4,7 +4,7 @@
 //
 // A still image can't show the one thing that distinguishes this from an SVG
 // clip-art exporter: the paint order is *recomputed per frame*. The loop is the
-// proof. Run: `npm run gif` (needs rsvg-convert + ffmpeg on PATH).
+// proof. Run: `bun run gif` (needs rsvg-convert + ffmpeg on PATH).
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

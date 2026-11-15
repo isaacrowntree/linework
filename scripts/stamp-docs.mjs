@@ -9,7 +9,7 @@
 //
 // Rewriting each specifier to ./name.js?v=<hash of that file> makes the URL
 // change whenever the bytes change, so a new build is a new cache key at both
-// the edge and in the browser. Runs as part of `npm run build`.
+// the edge and in the browser. Runs as part of `bun run build`.
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
